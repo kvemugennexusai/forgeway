@@ -1,0 +1,175 @@
+[
+  {
+    "id": "nvidia-h100-dc",
+    "vendor": "nvidia",
+    "model": "H100 80GB SXM5",
+    "tier": "datacenter",
+    "location": "us-east-1 (cloud)",
+    "architecture": "hopper",
+    "memory_gb_per_device": 80,
+    "interconnect": "NVLink 900GB/s",
+    "supported_precisions": ["fp16", "bf16", "fp8", "int8"],
+    "capacity_units_total": 32,
+    "capacity_units_allocated": 27,
+    "price_per_hr_per_unit": {
+      "value": 4.10,
+      "confidence": 92,
+      "provenance": "PUBLISHED",
+      "range_low": 3.49,
+      "range_high": 4.79,
+      "source": "Cloud on-demand list price, 80GB SXM5 instance, captured 2026-08"
+    },
+    "status": "healthy",
+    "notes": "Primary datacenter pool. Broadest software/runtime maturity of any target in the estate."
+  },
+  {
+    "id": "nvidia-l40s",
+    "vendor": "nvidia",
+    "model": "L40S 48GB",
+    "tier": "datacenter",
+    "location": "us-east-1 (cloud)",
+    "architecture": "ada-lovelace",
+    "memory_gb_per_device": 48,
+    "interconnect": "PCIe Gen4 (no NVLink)",
+    "supported_precisions": ["fp16", "bf16", "fp8", "int8"],
+    "capacity_units_total": 24,
+    "capacity_units_allocated": 10,
+    "price_per_hr_per_unit": {
+      "value": 1.25,
+      "confidence": 90,
+      "provenance": "PUBLISHED",
+      "range_low": 0.99,
+      "range_high": 1.59,
+      "source": "Cloud on-demand list price, 48GB PCIe instance, captured 2026-08"
+    },
+    "status": "healthy",
+    "notes": "Strong price/perf for models that fit in 48GB. No NVLink, so multi-device tensor parallel has a fabric penalty."
+  },
+  {
+    "id": "amd-mi300x",
+    "vendor": "amd",
+    "model": "MI300X 192GB",
+    "tier": "datacenter",
+    "location": "us-central-1 (cloud)",
+    "architecture": "cdna3",
+    "memory_gb_per_device": 192,
+    "interconnect": "Infinity Fabric",
+    "supported_precisions": ["fp16", "bf16", "fp8"],
+    "capacity_units_total": 8,
+    "capacity_units_allocated": 6,
+    "price_per_hr_per_unit": {
+      "value": 2.85,
+      "confidence": 90,
+      "provenance": "PUBLISHED",
+      "range_low": 2.49,
+      "range_high": 3.20,
+      "source": "Cloud on-demand list price, 192GB instance, captured 2026-08"
+    },
+    "status": "healthy",
+    "notes": "Single-device memory large enough to host 70B-class weights without tensor parallel. ROCm serving stack qualified for realtime-inference as of this fixture's evaluation."
+  },
+  {
+    "id": "intel-gaudi3",
+    "vendor": "intel",
+    "model": "Gaudi 3 128GB",
+    "tier": "datacenter",
+    "location": "us-west-2 (cloud)",
+    "architecture": "gaudi3",
+    "memory_gb_per_device": 128,
+    "interconnect": "RoCE (proprietary scale-out)",
+    "supported_precisions": ["bf16", "fp8"],
+    "capacity_units_total": 12,
+    "capacity_units_allocated": 3,
+    "price_per_hr_per_unit": {
+      "value": 2.30,
+      "confidence": 88,
+      "provenance": "PUBLISHED",
+      "range_low": 1.95,
+      "range_high": 2.65,
+      "source": "Cloud on-demand list price, 128GB instance, captured 2026-08"
+    },
+    "status": "healthy",
+    "unsupported_workload_classes": [
+      {
+        "workload_class": "realtime-inference",
+        "reason": "Continuous-batching low-latency serving runtime not qualified for this workload class on Gaudi 3 in the current software-stack snapshot."
+      }
+    ],
+    "notes": "Strong throughput on qualified batch/training workload classes. Continuous-batching low-latency serving runtime not yet qualified in this fixture's software-stack snapshot."
+  },
+  {
+    "id": "aws-trainium2",
+    "vendor": "aws",
+    "model": "Trainium2 (trn2)",
+    "tier": "datacenter",
+    "location": "us-east-1 (cloud)",
+    "architecture": "trainium2",
+    "memory_gb_per_device": 96,
+    "interconnect": "NeuronLink",
+    "supported_precisions": ["bf16", "fp8"],
+    "capacity_units_total": 20,
+    "capacity_units_allocated": 14,
+    "price_per_hr_per_unit": {
+      "value": 1.90,
+      "confidence": 88,
+      "provenance": "PUBLISHED",
+      "range_low": 1.60,
+      "range_high": 2.20,
+      "source": "Cloud on-demand list price, trn2 instance, captured 2026-08"
+    },
+    "status": "healthy",
+    "unsupported_workload_classes": [
+      {
+        "workload_class": "realtime-inference",
+        "reason": "Neuron SDK realtime continuous-batching serving path not qualified for this workload class in the current release snapshot."
+      }
+    ],
+    "notes": "Neuron SDK is qualified for training and batch inference. Realtime continuous-batching serving path is not qualified in this fixture's software-stack snapshot."
+  },
+  {
+    "id": "nvidia-jetson-thor",
+    "vendor": "nvidia",
+    "model": "Jetson AGX Thor 128GB",
+    "tier": "edge",
+    "location": "edge / on-prem",
+    "architecture": "blackwell-edge",
+    "memory_gb_per_device": 128,
+    "interconnect": "n/a (single device, unified memory)",
+    "supported_precisions": ["fp16", "int8"],
+    "capacity_units_total": 4,
+    "capacity_units_allocated": 1,
+    "price_per_hr_per_unit": {
+      "value": 0.35,
+      "confidence": 65,
+      "provenance": "MODELED",
+      "range_low": 0.28,
+      "range_high": 0.45,
+      "source": "Amortized capex/opex estimate over 3-year depreciation; owned edge asset, no market rate"
+    },
+    "status": "healthy",
+    "notes": "Edge/embedded tier. Memory bandwidth sized for single-stream and small-batch inference, not high-concurrency realtime serving at 70B scale."
+  },
+  {
+    "id": "local-nvidia-lab",
+    "vendor": "nvidia",
+    "model": "RTX 6000 Ada (lab bench, 2x)",
+    "tier": "lab",
+    "location": "on-prem lab",
+    "architecture": "ada-lovelace",
+    "memory_gb_per_device": 48,
+    "interconnect": "PCIe (no NVLink)",
+    "supported_precisions": ["fp16", "bf16", "int8"],
+    "capacity_units_total": 2,
+    "capacity_units_allocated": 0,
+    "price_per_hr_per_unit": {
+      "value": 0.60,
+      "confidence": 60,
+      "provenance": "MODELED",
+      "range_low": 0.45,
+      "range_high": 0.75,
+      "source": "Amortized capex/opex estimate; owned lab asset, no market rate"
+    },
+    "status": "healthy",
+    "notes": "Locally connected bench system, 2 devices. The only target in the estate with directly measured throughput data — see evidence on candidate scores. Not a production-capacity pool."
+  }
+]

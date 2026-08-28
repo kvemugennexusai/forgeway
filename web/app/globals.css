@@ -1,0 +1,128 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: 222 22% 6%;
+  --foreground: 210 20% 92%;
+
+  --card: 222 20% 9%;
+  --card-foreground: 210 20% 92%;
+
+  --border: 217 16% 18%;
+  --input: 217 16% 18%;
+  --ring: 199 89% 55%;
+
+  --primary: 199 89% 55%;
+  --primary-foreground: 222 47% 8%;
+
+  --secondary: 217 19% 15%;
+  --secondary-foreground: 210 20% 92%;
+
+  --muted: 217 19% 14%;
+  --muted-foreground: 215 14% 60%;
+
+  --accent: 217 19% 16%;
+  --accent-foreground: 210 20% 92%;
+
+  --destructive: 0 72% 51%;
+  --destructive-foreground: 210 20% 96%;
+
+  --success: 152 60% 42%;
+  --success-foreground: 152 60% 96%;
+
+  --warning: 38 92% 50%;
+  --warning-foreground: 38 92% 8%;
+
+  --vendor-nvidia: 100 65% 45%;
+  --vendor-amd: 0 72% 55%;
+  --vendor-intel: 205 85% 55%;
+  --vendor-aws: 32 90% 55%;
+
+  --provenance-measured: 152 60% 45%;
+  --provenance-published: 205 85% 58%;
+  --provenance-modeled: 38 92% 55%;
+
+  --radius: 0.5rem;
+
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", monospace;
+}
+
+* {
+  @apply border-border;
+}
+
+body {
+  @apply bg-background text-foreground;
+  font-feature-settings: "cv11", "ss01";
+}
+
+.font-mono {
+  font-variant-numeric: tabular-nums;
+}
+
+::selection {
+  background: hsl(var(--primary) / 0.35);
+}
+
+@layer utilities {
+  .scrollbar-thin::-webkit-scrollbar {
+    height: 6px;
+    width: 6px;
+  }
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background: hsl(var(--border));
+    border-radius: 999px;
+  }
+}
+
+/* Animation is reserved for four moments: analysis progression, scenario
+   events, a recommendation changing, and topology transitions. Nothing here
+   runs continuously except the flow line on the topology's active path. */
+
+@keyframes hero-in {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.animate-hero-in {
+  animation: hero-in 420ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes step-in {
+  from {
+    opacity: 0;
+    transform: translateX(-3px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+.animate-step-in {
+  animation: step-in 320ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes flow-dash {
+  to {
+    stroke-dashoffset: -20;
+  }
+}
+.animate-flow {
+  stroke-dasharray: 5 5;
+  animation: flow-dash 900ms linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-hero-in,
+  .animate-step-in,
+  .animate-flow {
+    animation: none;
+  }
+}

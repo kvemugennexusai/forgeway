@@ -1,0 +1,42 @@
+[
+  {
+    "workload_id": "wl-llama70b-rt",
+    "target_id": "nvidia-h100-dc",
+    "throughput_tokens_per_s_per_replica": {
+      "value": 1050,
+      "confidence": 97,
+      "provenance": "MEASURED",
+      "range_low": 990,
+      "range_high": 1100,
+      "source": "Production telemetry, trailing 24h window (current placement)"
+    },
+    "p99_latency_ms_per_replica": {
+      "value": 390,
+      "confidence": 97,
+      "provenance": "MEASURED",
+      "range_low": 370,
+      "range_high": 410,
+      "source": "Production telemetry, trailing 24h window (current placement)"
+    }
+  },
+  {
+    "workload_id": "wl-llama70b-rt",
+    "target_id": "amd-mi300x",
+    "throughput_tokens_per_s_per_replica": {
+      "value": 1400,
+      "confidence": 78,
+      "provenance": "MODELED",
+      "range_low": 1250,
+      "range_high": 1500,
+      "source": "Performance model calibrated against published MI300X inference benchmarks for 70B-parameter dense transformers, bf16, single-device placement (fits without tensor parallel at 192GB/device)"
+    },
+    "p99_latency_ms_per_replica": {
+      "value": 310,
+      "confidence": 78,
+      "provenance": "MODELED",
+      "range_low": 280,
+      "range_high": 360,
+      "source": "Performance model calibrated against published MI300X inference benchmarks for 70B-parameter dense transformers, bf16, single-device placement (fits without tensor parallel at 192GB/device)"
+    }
+  }
+]

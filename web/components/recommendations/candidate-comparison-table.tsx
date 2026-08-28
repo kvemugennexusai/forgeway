@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { CheckCircle2, ChevronDown, XCircle } from "lucide-react";
 
+import { Badge } from "@/components/ui/badge";
 import {
   Table,
   TableBody,
@@ -12,8 +13,28 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { VendorBadge } from "@/components/vendor-badge";
-import type { CandidateEvaluation } from "@/lib/types";
+import type { CandidateEvaluation, CandidateStatus } from "@/lib/types";
 import { cn } from "@/lib/utils";
+
+const STATUS_LABEL: Record<CandidateStatus, string> = {
+  recommended: "Recommended",
+  feasible: "Feasible",
+  rejected: "Rejected",
+};
+
+const STATUS_VARIANT: Record<CandidateStatus, "success" | "outline" | "destructive"> = {
+  recommended: "success",
+  feasible: "outline",
+  rejected: "destructive",
+};
+
+function StatusBadge({ status }: { status: CandidateStatus }) {
+  return (
+    <Badge variant={STATUS_VARIANT[status]} className="text-[10px] uppercase tracking-wide">
+      {STATUS_LABEL[status]}
+    </Badge>
+  );
+}
 
 function ScoreBar({ value }: { value: number | null }) {
   if (value === null) return <span className="text-muted-foreground">—</span>;
@@ -47,11 +68,7 @@ function CandidateRow({ candidate }: { candidate: CandidateEvaluation }) {
           </div>
         </TableCell>
         <TableCell className="py-1.5">
-          {candidate.feasible ? (
-            <CheckCircle2 className="h-3.5 w-3.5 text-success" />
-          ) : (
-            <XCircle className="h-3.5 w-3.5 text-destructive" />
-          )}
+          <StatusBadge status={candidate.status} />
         </TableCell>
         <TableCell className="py-1.5 font-mono text-xs tabular-nums">
           {candidate.predicted ? `${candidate.predicted.p99_latency_ms.toFixed(0)}ms` : "—"}
@@ -97,9 +114,11 @@ function CandidateRow({ candidate }: { candidate: CandidateEvaluation }) {
   );
 }
 
+const STATUS_ORDER: Record<CandidateStatus, number> = { recommended: 0, feasible: 1, rejected: 2 };
+
 export function CandidateComparisonTable({ candidates }: { candidates: CandidateEvaluation[] }) {
   const sorted = [...candidates].sort((a, b) => {
-    if (a.feasible !== b.feasible) return a.feasible ? -1 : 1;
+    if (a.status !== b.status) return STATUS_ORDER[a.status] - STATUS_ORDER[b.status];
     if (a.rank && b.rank) return a.rank - b.rank;
     if (a.score !== null && b.score !== null) return a.score - b.score;
     return 0;
@@ -115,7 +134,7 @@ export function CandidateComparisonTable({ candidates }: { candidates: Candidate
         <TableHeader>
           <TableRow>
             <TableHead>Target</TableHead>
-            <TableHead>OK</TableHead>
+            <TableHead>Status</TableHead>
             <TableHead>P99</TableHead>
             <TableHead>Cost</TableHead>
             <TableHead>Conf.</TableHead>

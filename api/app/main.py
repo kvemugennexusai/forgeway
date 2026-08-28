@@ -22,7 +22,12 @@ from app.state import store
 def _seed_baseline_recommendations() -> None:
     """Pre-compute a baseline recommendation for every workload flagged
     reanalyze=true, so the dashboard's Insight panel and a direct link to
-    /recommendations/<id> work before anyone submits the analyzer form."""
+    /recommendations/<id> work before anyone submits the analyzer form.
+
+    Recorded as each workload's canonical baseline — the estate Insight
+    panel always reads this, never whatever a user most recently computed
+    via /analyze or a scenario, so exploring the app can't make the
+    dashboard's opportunity disappear."""
     for workload in load_workloads():
         if not workload.reanalyze:
             continue
@@ -33,6 +38,7 @@ def _seed_baseline_recommendations() -> None:
             effective_min_throughput=workload.slo.min_throughput_tokens_per_s,
         )
         store.put(record)
+        store.set_canonical(workload.id, record.id)
 
 
 @asynccontextmanager

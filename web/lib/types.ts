@@ -129,11 +129,14 @@ export interface NormalizedScores {
   headroom: number;
 }
 
+export type CandidateStatus = "recommended" | "feasible" | "rejected";
+
 export interface CandidateEvaluation {
   target_id: string;
   target_label: string;
   vendor: string;
   feasible: boolean;
+  status: CandidateStatus;
   checks: FeasibilityCheck[];
   rejection_reason: string | null;
   rejection_reasons: string[];
@@ -196,6 +199,7 @@ export interface DecisionRecord {
   scenario: ScenarioParams;
   derived_from_id: string | null;
   slo: SLO;
+  current_placement: CurrentPlacement;
   effective_min_throughput_tokens_per_s: number;
   objective_weights: ObjectiveWeights;
   min_confidence_pct: number;
@@ -245,8 +249,12 @@ export interface InsightCard {
   title: string;
   body: string;
   recommendation_id: string;
-  recommended_target_id: string | null;
-  savings_pct: number | null;
+  current_target_id: string;
+  current_cost_per_hr: number;
+  recommended_target_id: string;
+  recommended_cost_per_hr: number;
+  savings_pct: number;
+  slo_met: boolean;
   confidence_pct: number;
 }
 

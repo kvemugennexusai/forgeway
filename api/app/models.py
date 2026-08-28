@@ -219,11 +219,15 @@ class NormalizedScores(BaseModel):
     headroom: float
 
 
+CandidateStatus = Literal["recommended", "feasible", "rejected"]
+
+
 class CandidateEvaluation(BaseModel):
     target_id: str
     target_label: str
     vendor: str
     feasible: bool
+    status: CandidateStatus = "rejected"
     checks: list[FeasibilityCheck]
     rejection_reason: Optional[str] = None
     rejection_reasons: list[str] = Field(default_factory=list)
@@ -288,6 +292,7 @@ class Recommendation(BaseModel):
     scenario: ScenarioParams
     derived_from_id: Optional[str] = None
     slo: SLO
+    current_placement: CurrentPlacement
     effective_min_throughput_tokens_per_s: float
     objective_weights: ObjectiveWeights
     min_confidence_pct: float
@@ -323,8 +328,12 @@ class InsightCard(BaseModel):
     title: str
     body: str
     recommendation_id: str
-    recommended_target_id: Optional[str]
-    savings_pct: Optional[float]
+    current_target_id: str
+    current_cost_per_hr: float
+    recommended_target_id: str
+    recommended_cost_per_hr: float
+    savings_pct: float
+    slo_met: bool
     confidence_pct: int
 
 

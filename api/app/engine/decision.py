@@ -325,6 +325,23 @@ def run_decision(
                 else:
                     c.why_not_chosen = c.capacity_note or "Not needed to cover required throughput."
 
+    # Every candidate gets one explicit, machine-readable status: RECOMMENDED
+    # (chosen solo or part of a split), FEASIBLE (cleared every gate but
+    # wasn't picked — a legitimate alternative, not a failure), or REJECTED
+    # (failed a hard compatibility check, the SLO, or the confidence
+    # requirement — always with reasons attached via rejection_reasons /
+    # slo_violations / why_not_chosen).
+    recommended_ids = {recommended_target_id} if recommended_target_id else {
+        a.target_id for a in split_allocation
+    }
+    for c in candidates:
+        if c.target_id in recommended_ids:
+            c.status = "recommended"
+        elif c.feasible and not c.slo_violations and c.meets_confidence_requirement is not False:
+            c.status = "feasible"
+        else:
+            c.status = "rejected"
+
     # A confidence problem is not a capacity problem: if every SLO-compliant
     # candidate exists but none clears the confidence bar, splitting across
     # them doesn't help — the honest answer is to withhold a recommendation,
@@ -473,6 +490,7 @@ def run_decision(
         scenario=scenario,
         derived_from_id=prior.id if prior else None,
         slo=workload.slo,
+        current_placement=workload.current_placement,
         effective_min_throughput_tokens_per_s=effective_min_throughput,
         objective_weights=effective_weights,
         min_confidence_pct=effective_min_confidence,

@@ -12,6 +12,7 @@ class DecisionStore:
     def __init__(self) -> None:
         self._records: dict[str, Recommendation] = {}
         self._counter = itertools.count(1)
+        self._canonical: dict[str, str] = {}  # workload_id -> record_id
 
     def next_id(self) -> str:
         return f"rec-{next(self._counter):04d}"
@@ -28,6 +29,17 @@ class DecisionStore:
         if not matches:
             return None
         return max(matches, key=lambda r: r.generated_at)
+
+    def set_canonical(self, workload_id: str, record_id: str) -> None:
+        """The stable, always-normal baseline for a workload — what the
+        estate Insight panel reads. Deliberately separate from
+        latest_for_workload: a user running /analyze again or trying a
+        scenario must never change what the dashboard calls "current"."""
+        self._canonical[workload_id] = record_id
+
+    def get_canonical(self, workload_id: str) -> Recommendation | None:
+        record_id = self._canonical.get(workload_id)
+        return self._records.get(record_id) if record_id else None
 
 
 store = DecisionStore()

@@ -5,6 +5,8 @@ import { Loader2 } from "lucide-react";
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { RecommendationHero } from "@/components/recommendations/recommendation-hero";
+import { CurrentVsRecommended } from "@/components/recommendations/current-vs-recommended";
+import { WhyThisTarget } from "@/components/recommendations/why-this-target";
 import { SplitAllocationPanel } from "@/components/recommendations/split-allocation-panel";
 import { CandidateComparisonTable } from "@/components/recommendations/candidate-comparison-table";
 import { EvidencePanel } from "@/components/recommendations/evidence-panel";
@@ -51,6 +53,8 @@ export function RecommendationWorkspace({
   return (
     <div className="space-y-4 p-6">
       <RecommendationHero record={active} />
+      <CurrentVsRecommended record={active} />
+      <WhyThisTarget record={active} />
 
       <Card>
         <CardHeader className="pb-2">

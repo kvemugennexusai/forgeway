@@ -41,16 +41,19 @@ def compute_estate_summary(store: DecisionStore) -> EstateSummary:
     for w in workloads:
         if not w.reanalyze:
             continue
-        record = store.latest_for_workload(w.id)
+        # The canonical baseline, never whatever a user most recently
+        # computed via /analyze or a scenario — the dashboard's opportunity
+        # must not depend on what else has been clicked around in the app.
+        record = store.get_canonical(w.id)
         if record is None or record.recommended_target_id is None:
             continue
         if record.recommended_target_id == w.current_placement.target_id:
             continue
         current_cost = w.current_placement.cost_per_hr
         rec_cost = record.recommended.cost_per_hr if record.recommended else current_cost
-        savings_pct = (
-            round(100 * (current_cost - rec_cost) / current_cost, 1) if current_cost else None
-        )
+        if current_cost <= 0:
+            continue
+        savings_pct = round(100 * (current_cost - rec_cost) / current_cost, 1)
         insights.append(
             InsightCard(
                 workload_id=w.id,
@@ -58,8 +61,12 @@ def compute_estate_summary(store: DecisionStore) -> EstateSummary:
                 title=f"{record.recommended_target_id} outperforms the current placement",
                 body=record.reasoning,
                 recommendation_id=record.id,
+                current_target_id=w.current_placement.target_id,
+                current_cost_per_hr=current_cost,
                 recommended_target_id=record.recommended_target_id,
+                recommended_cost_per_hr=rec_cost,
                 savings_pct=savings_pct,
+                slo_met=record.slo_met,
                 confidence_pct=record.confidence_pct,
             )
         )

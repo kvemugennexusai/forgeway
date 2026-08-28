@@ -228,6 +228,34 @@ def test_baseline_recommends_mi300x_over_h100():
     assert record.recommended.cost_per_hr < 8.20  # cheaper than the current H100 placement
 
 
+def test_recommendation_carries_the_workload_current_placement():
+    workload, record = _baseline_llama()
+    assert record.current_placement == workload.current_placement
+    assert record.current_placement.target_id == "nvidia-h100-dc"
+
+
+def test_every_candidate_has_exactly_one_of_three_explicit_statuses():
+    _, record = _baseline_llama()
+    by_id = {c.target_id: c for c in record.candidates}
+
+    assert by_id["amd-mi300x"].status == "recommended"
+    assert by_id["nvidia-h100-dc"].status == "feasible"  # a real alternative, just not chosen
+    for infeasible_id in ["nvidia-l40s", "intel-gaudi3", "aws-trainium2", "nvidia-jetson-thor", "local-nvidia-lab"]:
+        assert by_id[infeasible_id].status == "rejected"
+
+    assert {c.status for c in record.candidates} <= {"recommended", "feasible", "rejected"}
+    assert sum(1 for c in record.candidates if c.status == "recommended") == 1
+
+
+def test_rejected_candidates_always_carry_explicit_reasons():
+    _, record = _baseline_llama()
+    for c in record.candidates:
+        if c.status != "rejected":
+            continue
+        has_reason = bool(c.rejection_reasons) or bool(c.slo_violations) or bool(c.why_not_chosen)
+        assert has_reason, f"{c.target_id} is rejected with no machine-readable reason"
+
+
 def test_hard_checks_reject_incompatible_targets_with_distinct_reasons():
     _, record = _baseline_llama()
     by_id = {c.target_id: c for c in record.candidates}

@@ -3,13 +3,13 @@ pipeline depends on the one before it:
 
  1. Load workload.                          (caller — app/data/loader.py)
  2. Load compute targets.                   (caller — app/data/loader.py)
- 3. Evaluate hard compatibility.             (app/engine/feasibility.py)
+ 3. Evaluate hard compatibility.             (app/core/engine/feasibility.py)
  4. Return explicit rejection reasons.       (CandidateEvaluation.rejection_reasons)
- 5. For feasible targets, retrieve prediction fixture.  (app/engine/scoring.retrieve_prediction)
- 6. Check SLO constraints.                   (app/engine/scoring.score_candidate — hard reject)
- 7. Normalize cost/performance/headroom scores.         (_normalize, below)
- 8. Apply workload objective weights.        (_normalize, below)
- 9. Apply confidence requirements.           (_apply_confidence_gate, below)
+ 5. For feasible targets, retrieve prediction. (app/core/engine/scoring.retrieve_prediction)
+ 6. Check SLO constraints.                   (app/core/engine/scoring.score_candidate — hard reject)
+ 7. Normalize cost/performance/headroom scores.         (app/core/engine/ranking.normalize_and_weight)
+ 8. Apply workload objective weights.        (app/core/engine/ranking.normalize_and_weight)
+ 9. Apply confidence requirements.           (below)
 10. Rank candidates.                         (below)
 11. Return recommendation plus detailed reasoning.      (Recommendation)
 
@@ -18,6 +18,14 @@ folded into the weighted score in steps 7-8. A candidate that fails either
 one cannot be recommended no matter how its weighted score would otherwise
 come out; objective weights only ever choose among candidates that already
 cleared both hard gates.
+
+Steps 3, 5-8 are the reusable, product-agnostic core (app/core/engine/) —
+pure functions over typed schemas, with no knowledge of HTTP, fixtures, or
+this product's narrative. This function is the product-level orchestrator:
+it wires the core engine to this demo's data source (app/data/loader.py),
+adds the greedy-split fallback and confidence gate below, and builds the
+Recommendation's evidence/reasoning narrative — none of which the reusable
+core needs to know about. See docs/open-source-architecture.md.
 
 This is the ONLY function that produces a Recommendation. Every route that
 needs one — /analyze, the estate insight panel, and both simulation types —
@@ -37,16 +45,15 @@ recommendation is more honest than blending unconfident options together.
 """
 from __future__ import annotations
 
-import math
 from typing import Optional
 
+from app.core.engine.feasibility import evaluate_feasibility
+from app.core.engine.ranking import normalize_and_weight
+from app.core.engine.scoring import score_candidate, size_replicas
 from app.data.loader import get_performance_profile, load_compute_targets
-from app.engine.feasibility import evaluate_feasibility
-from app.engine.scoring import score_candidate
 from app.models import (
     CandidateEvaluation,
     Evidence,
-    NormalizedScores,
     ObjectiveWeights,
     Recommendation,
     ScenarioParams,
@@ -107,48 +114,6 @@ def _build_unmitigated_projection(
     )
 
 
-def _normalize_and_weight(
-    qualifying: list[CandidateEvaluation],
-    workload: Workload,
-    capacity_overrides: dict[str, int],
-) -> None:
-    """Steps 7-8. Min-max normalize cost (lower better), performance — P99
-    latency (lower better) — and headroom — spare capacity left behind
-    (higher better) — across the qualifying candidate set, then blend them
-    with the workload's (normalized) objective weights. Mutates each
-    candidate in place."""
-    if not qualifying:
-        return
-
-    targets_by_id = {t.id: t for t in load_compute_targets()}
-    costs = [c.predicted.cost_per_hr for c in qualifying]  # type: ignore[union-attr]
-    latencies = [c.predicted.p99_latency_ms for c in qualifying]  # type: ignore[union-attr]
-    headrooms = []
-    for c in qualifying:
-        target = targets_by_id[c.target_id]
-        free_before = capacity_overrides.get(c.target_id, target.free_capacity_units)
-        free_after = max(free_before - c.predicted.replica_count, 0)  # type: ignore[union-attr]
-        headrooms.append(free_after / target.capacity_units_total if target.capacity_units_total else 0.0)
-
-    def norm(values: list[float], i: int, *, higher_is_better: bool) -> float:
-        lo, hi = min(values), max(values)
-        if hi - lo <= 1e-9:
-            return 1.0
-        return (values[i] - lo) / (hi - lo) if higher_is_better else (hi - values[i]) / (hi - lo)
-
-    weights = workload.objective_weights.normalized()
-    for i, c in enumerate(qualifying):
-        cost_n = norm(costs, i, higher_is_better=False)
-        perf_n = norm(latencies, i, higher_is_better=False)
-        headroom_n = norm(headrooms, i, higher_is_better=True)
-        c.normalized_scores = NormalizedScores(
-            cost=round(cost_n, 4), performance=round(perf_n, 4), headroom=round(headroom_n, 4)
-        )
-        c.weighted_score = round(
-            weights.cost * cost_n + weights.performance * perf_n + weights.headroom * headroom_n, 6
-        )
-
-
 def _greedy_split(
     workload: Workload,
     candidates: list[CandidateEvaluation],
@@ -184,10 +149,17 @@ def _greedy_split(
         price = target.price_per_hr_per_unit.value
         throughput_per_replica = profile.throughput_tokens_per_s_per_replica.value
 
-        ideal_for_remaining = max(math.ceil(remaining_required / throughput_per_replica), 1)
-        capacity_cap = capacity_overrides.get(target.id, target.free_capacity_units)
-        budget_cap = math.floor(remaining_budget / price) if price > 0 else ideal_for_remaining
-        replicas = max(min(ideal_for_remaining, capacity_cap, budget_cap), 0)
+        # Same sizing formula as the single-target path (core.engine.scoring
+        # .size_replicas) — just applied against what's left to cover after
+        # earlier candidates in this split have each taken their share.
+        sizing = size_replicas(
+            required_throughput=remaining_required,
+            throughput_per_replica=throughput_per_replica,
+            free_capacity_units=capacity_overrides.get(target.id, target.free_capacity_units),
+            budget_ceiling_per_hr=remaining_budget,
+            price_per_unit=price,
+        )
+        replicas = sizing.actual_replicas
         if replicas <= 0:
             continue
 
@@ -239,6 +211,7 @@ def run_decision(
     scoring_workload = workload.model_copy(update={"objective_weights": effective_weights})
 
     targets = load_compute_targets()
+    targets_by_id = {t.id: t for t in targets}
     candidates: list[CandidateEvaluation] = []
 
     # Steps 3-6, per target.
@@ -264,7 +237,7 @@ def run_decision(
     qualifying = [c for c in slo_compliant if c.meets_confidence_requirement]
 
     # Steps 7-8: normalize and weight only the candidates that cleared both hard gates.
-    _normalize_and_weight(qualifying, scoring_workload, capacity_overrides)
+    normalize_and_weight(qualifying, scoring_workload, capacity_overrides, targets_by_id)
 
     # Step 10: rank by weighted score, highest first.
     qualifying.sort(key=lambda c: c.weighted_score or 0.0, reverse=True)
@@ -353,7 +326,6 @@ def run_decision(
     )
 
     evidence: list[Evidence] = []
-    targets_by_id = {t.id: t for t in targets}
     if recommended_target_id:
         best_candidate = qualifying[0]
         t = targets_by_id[recommended_target_id]

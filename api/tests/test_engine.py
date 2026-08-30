@@ -16,10 +16,10 @@ on values computed the same way every run.
 """
 from __future__ import annotations
 
+from app.core.engine.feasibility import evaluate_feasibility
+from app.core.engine.scoring import score_candidate
 from app.data.loader import get_workload
 from app.engine.decision import run_decision
-from app.engine.feasibility import evaluate_feasibility
-from app.engine.scoring import score_candidate
 from app.models import (
     ComputeTarget,
     CurrentPlacement,

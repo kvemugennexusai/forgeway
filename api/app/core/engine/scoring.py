@@ -2,19 +2,20 @@
 the workload's SLO at the scale the workload actually needs (step 6), and
 sizes the placement.
 
-The raw Prediction (per replica, straight from the fixture + the target's
-priced Metric) is kept separate from the *sized* outcome (how many replicas
-this scenario needs, and whether that sizing holds the SLO) — retrieval and
-scale are different concerns. Normalizing across candidates and applying
-objective weights happens one level up, in decision.py, because those steps
-need the whole candidate set, not just one target.
+The raw Prediction (per replica, straight from the performance-profile
+evidence + the target's priced Metric) is kept separate from the *sized*
+outcome (how many replicas this scenario needs, and whether that sizing
+holds the SLO) — retrieval and scale are different concerns. Normalizing
+across candidates and applying objective weights happens one level up, in
+app.core.engine.ranking, because those steps need the whole candidate set,
+not just one target.
 """
 from __future__ import annotations
 
 import math
 from dataclasses import dataclass
 
-from app.models import (
+from app.core.schemas import (
     CandidateEvaluation,
     ComputeTarget,
     FeasibilityCheck,
@@ -72,9 +73,10 @@ def size_replicas(
 def retrieve_prediction(
     workload: Workload, target: ComputeTarget, profile: PerformanceProfile
 ) -> Prediction:
-    """Step 5: retrieve the prediction fixture for this (workload, target)
-    pair. Latency and throughput come straight from the fixture; cost is the
-    target's own priced Metric — nothing here is computed, only looked up."""
+    """Step 5: retrieve the prediction for this (workload, target) pair.
+    Latency and throughput come straight from the performance-profile
+    evidence; cost is the target's own priced Metric — nothing here is
+    computed, only looked up."""
     return Prediction(
         target_id=target.id,
         workload_id=workload.id,
@@ -123,7 +125,7 @@ def score_candidate(
             rejection_reasons=[reason],
         )
 
-    # Step 5: retrieve the prediction fixture.
+    # Step 5: retrieve the prediction.
     prediction = retrieve_prediction(workload, target, profile)
     throughput_per_replica = prediction.throughput_tokens_per_s.value
     p99 = prediction.latency_p99_ms.value

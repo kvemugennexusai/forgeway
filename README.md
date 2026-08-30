@@ -34,23 +34,33 @@ the same code path.
 ### Backend (`api/`)
 
 ```
-app/models.py              Pydantic contracts — the only shapes that cross the API boundary
+app/core/                  reusable, product-agnostic core — no filesystem/HTTP access anywhere
+  schemas/                  ComputeTarget, Workload, Metric/Provenance (evidence), and the
+                            engine's output contracts (FeasibilityCheck, Prediction,
+                            CandidateEvaluation, ...)
+  engine/
+    feasibility.py           step 3: the hard compatibility checks (policy, memory, precision,
+                             workload-class, status) — every check runs and is reported, not
+                             just the first failure
+    scoring.py                steps 5-6: retrieves the prediction for a feasible target, sizes
+                             it to the workload's required throughput (capacity- and
+                             budget-aware), and checks it against the SLO — a hard reject, never
+                             a weighted preference
+    ranking.py                 steps 7-8: normalizes cost/performance/headroom across the
+                             qualifying candidates and applies the workload's objective weights
+app/models.py               Pydantic contracts — the only shapes that cross the API boundary
+                             (re-exports every app/core/schemas type, plus this product's own:
+                             Recommendation, the six-scenario types, estate/dashboard views)
 app/fixtures/*.json        compute targets, workloads, and per-(workload,target) performance profiles
-app/data/loader.py         reads the fixtures into typed objects (the only filesystem access)
+app/data/loader.py         reads the fixtures into typed objects (the only filesystem access;
+                            the seam a future discovery adapter / benchmark runner replaces)
 app/engine/
-  feasibility.py           step 3: the hard compatibility checks (policy, memory, precision,
-                            workload-class, status) — every check runs and is reported, not
-                            just the first failure
-  scoring.py                steps 5-6: retrieves the prediction fixture for a feasible target,
-                            sizes it to the workload's required throughput (capacity- and
-                            budget-aware), and checks it against the SLO — a hard reject, never
-                            a weighted preference
-  decision.py                steps 7-11: normalizes cost/performance/headroom across the
-                            SLO-compliant, confidence-qualified candidates, applies the
-                            workload's objective weights, ranks, and returns a Recommendation
-                            with full reasoning (falls back to a greedy split across whatever
-                            still clears the confidence bar when no single target clears both
-                            gates alone; withholds a recommendation entirely if nothing does)
+  decision.py                steps 9-11 plus orchestration: wires the core engine above to this
+                            demo's fixture data, applies the confidence gate, falls back to a
+                            greedy split across whatever still clears the confidence bar when no
+                            single target clears both gates alone (withholds a recommendation
+                            entirely if nothing does), and builds the Recommendation's
+                            evidence/reasoning narrative
   scenarios.py                the six named scenario presets (below) — each a pure function of
                             the workload's own baseline — plus run_scenario(), which computes a
                             fresh BEFORE, applies one preset for AFTER, and builds the
@@ -64,6 +74,11 @@ tests/test_engine.py        unit tests: hard-constraint rejections in isolation,
 tests/test_scenarios.py     unit tests: the six presets' exact parameter values, that they
                              never mutate fixture state, and the BEFORE/AFTER/explanation shape
 ```
+
+> Forgeway's long-term goal is to describe this core as an open-source
+> workload intelligence layer for heterogeneous AI compute, reusable outside
+> this demo. See [`docs/open-source-architecture.md`](docs/open-source-architecture.md)
+> for the public-vs-product boundary this split establishes.
 
 **The decision pipeline, in order:** load workload → load compute targets → evaluate hard
 compatibility (`feasibility.py`) → collect explicit rejection reasons for anything that fails

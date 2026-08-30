@@ -1,7 +1,7 @@
 """Hard compatibility checks — the feasible-set filter.
 
 A target is feasible only if every check here passes. Order matters only for
-readability; all checks run and are reported, so the UI can show the full
+readability; all checks run and are reported, so a caller can show the full
 checklist rather than just the first failure. This mirrors the "independent
 axes, never derive one from another" discipline: policy, memory, precision
 and workload-class qualification are unrelated facts and must fail with
@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import re
 
-from app.models import ComputeTarget, FeasibilityCheck, Workload
+from app.core.schemas import ComputeTarget, FeasibilityCheck, Workload
 
 
 def _location_tokens(location: str) -> set[str]:

@@ -1,5 +1,13 @@
 # Forgeway
 
+[![Schema forgeway/v0.1](https://img.shields.io/badge/schema-forgeway%2Fv0.1-blue)](docs/schemas.md)
+[![FastAPI](https://img.shields.io/badge/FastAPI-%3E%3D0.115-009688?logo=fastapi&logoColor=white)](api/requirements.txt)
+[![Pydantic](https://img.shields.io/badge/Pydantic-%3E%3D2.9-E92063?logo=pydantic&logoColor=white)](api/requirements.txt)
+[![Next.js](https://img.shields.io/badge/Next.js-15-black?logo=next.js&logoColor=white)](web/package.json)
+[![React](https://img.shields.io/badge/React-19-149ECA?logo=react&logoColor=white)](web/package.json)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript&logoColor=white)](web/package.json)
+[![Last commit](https://img.shields.io/github/last-commit/kvemugennexusai/forgeway)](https://github.com/kvemugennexusai/forgeway/commits/main)
+
 Forgeway is the decision layer for heterogeneous AI infrastructure. Given a workload, its
 service-level objective, enterprise policy, the available compute targets, predicted or
 measured performance, and capacity/economics, Forgeway determines which targets are

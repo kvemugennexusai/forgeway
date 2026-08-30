@@ -1,5 +1,6 @@
-fastapi>=0.115
-uvicorn[standard]>=0.32
-pydantic>=2.9
-pytest>=8.3
-httpx>=0.27
+# Dependency versions are declared in pyproject.toml — that's the single
+# source of truth; this file only exists so `pip install -r requirements.txt`
+# (documented in README.md) keeps working. It installs this package in
+# editable mode with its `dev` extra (pytest, httpx), which also registers
+# the `forgeway` console script.
+-e .[dev]

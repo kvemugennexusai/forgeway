@@ -63,6 +63,8 @@ does).
 | `status` | `"healthy" \| "degraded" \| "offline"` | |
 | `unsupported_workload_classes` | `list[UnsupportedWorkloadClass]` | |
 | `notes` | `str` | |
+| `observed_gpu_utilization_pct`, `observed_memory_utilization_pct` | `Optional[float]` | **new** — live discovery telemetry (see [`docs/discovery.md`](discovery.md)), deliberately separate from `utilization_pct` above: that field is Forgeway's own placement-bookkeeping concept (capacity units *Forgeway* has assigned), not instantaneous hardware busyness. `None` for every fixture. |
+| `discovered_at` | `Optional[datetime]` | **new** — when a discovery adapter produced this record; `None` for fixture-sourced targets. |
 
 ## 2. AIWorkload
 

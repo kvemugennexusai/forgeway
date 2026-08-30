@@ -8,6 +8,7 @@ already this codebase's single canonical compute-target type — there was no
 duplicated ad hoc structure to migrate away from."""
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Literal, Optional
 
 from pydantic import BaseModel, Field, computed_field
@@ -48,6 +49,15 @@ class ComputeTarget(BaseModel):
     status: Literal["healthy", "degraded", "offline"]
     unsupported_workload_classes: list[UnsupportedWorkloadClass] = Field(default_factory=list)
     notes: str = ""
+    # Live discovery telemetry — deliberately separate from
+    # capacity_units_allocated/utilization_pct above, which are Forgeway's
+    # own placement-bookkeeping concept (how many capacity units *Forgeway*
+    # has assigned to workloads), not instantaneous hardware busyness.
+    # None for every fixture; populated by a discovery adapter
+    # (app.discovery) when it actually queried the hardware.
+    observed_gpu_utilization_pct: Optional[float] = None
+    observed_memory_utilization_pct: Optional[float] = None
+    discovered_at: Optional[datetime] = None
 
     @computed_field  # type: ignore[misc]
     @property

@@ -2,8 +2,8 @@
 
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-D22128?logo=apache&logoColor=white)](LICENSE)
 [![Schema forgeway/v0.1](https://img.shields.io/badge/schema-forgeway%2Fv0.1-blue)](docs/schemas.md)
-[![FastAPI](https://img.shields.io/badge/FastAPI-%3E%3D0.115-009688?logo=fastapi&logoColor=white)](api/requirements.txt)
-[![Pydantic](https://img.shields.io/badge/Pydantic-%3E%3D2.9-E92063?logo=pydantic&logoColor=white)](api/requirements.txt)
+[![FastAPI](https://img.shields.io/badge/FastAPI-%3E%3D0.115-009688?logo=fastapi&logoColor=white)](api/pyproject.toml)
+[![Pydantic](https://img.shields.io/badge/Pydantic-%3E%3D2.9-E92063?logo=pydantic&logoColor=white)](api/pyproject.toml)
 [![Next.js](https://img.shields.io/badge/Next.js-15-black?logo=next.js&logoColor=white)](web/package.json)
 [![React](https://img.shields.io/badge/React-19-149ECA?logo=react&logoColor=white)](web/package.json)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript&logoColor=white)](web/package.json)
@@ -240,6 +240,21 @@ cd api && source .venv/bin/activate && pytest tests/ -v
 
 ---
 
+## CLI: hardware discovery
+
+`forgeway discover` detects local NVIDIA CUDA hardware (via `nvidia-smi`) and prints it as a
+`ComputeTarget` — the same schema the demo fixtures use, human-readable by default or as JSON
+with `--json`. Independent of the web demo above; see [`docs/discovery.md`](docs/discovery.md).
+Already available after the backend setup above (`pip install -r requirements.txt` registers the
+`forgeway` console script):
+
+```bash
+cd api && source .venv/bin/activate
+forgeway discover
+```
+
+---
+
 ## What's implemented vs. not
 
 **Implemented:** the full feasibility → prediction → SLO check → normalize → weight →
@@ -249,13 +264,16 @@ per-workload `ObjectiveWeights` and `min_confidence_pct` that can change the ran
 recommendation outright; capacity-aware split placement that itself respects the confidence
 gate; six named scenario presets, each backend-owned and mutation-free, with a BEFORE/EVENT/
 AFTER comparison and an explicit change explanation; every route in the product spec,
-fixture-driven.
+fixture-driven; one real hardware discovery adapter (`forgeway discover`, local NVIDIA GPUs via
+`nvidia-smi` — see [`docs/discovery.md`](docs/discovery.md)), standalone from the web demo.
 
-**Not implemented (by design, this build):** any real infrastructure integration — no cloud
-API calls, no live telemetry, no Kubernetes. No persistence beyond an in-memory store (restart
-the API and every simulated recommendation is gone; the baseline Insight reseeds). No custom
-workload authoring in `/analyze` — only the fixture workload library. No LLM in the decision
-path — the deterministic engine decides; nothing here calls a model to place a workload.
+**Not implemented (by design, this build):** the web demo above still runs entirely on
+fixtures — no cloud API calls, no live telemetry feeding it, no Kubernetes; `forgeway discover`
+is real local hardware discovery, but it isn't wired into the demo's fixtures, store, or UI yet.
+No persistence beyond an in-memory store (restart the API and every simulated recommendation is
+gone; the baseline Insight reseeds). No custom workload authoring in `/analyze` — only the
+fixture workload library. No LLM in the decision path — the deterministic engine decides;
+nothing here calls a model to place a workload.
 
 ---
 

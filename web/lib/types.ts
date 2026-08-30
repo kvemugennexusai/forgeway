@@ -28,6 +28,7 @@ export interface UnsupportedWorkloadClass {
 }
 
 export interface ComputeTarget {
+  schema_version: "forgeway/v0.1";
   id: string;
   vendor: string;
   model: string;
@@ -39,12 +40,26 @@ export interface ComputeTarget {
   supported_precisions: string[];
   capacity_units_total: number;
   capacity_units_allocated: number;
+  /** Structured runtime/framework qualification (e.g. "vLLM"). null means
+   * "not known" — not populated by today's fixtures or the NVIDIA
+   * discovery adapter; see docs/schemas.md. */
+  runtime_support: string[] | null;
   price_per_hr_per_unit: PriceInfo;
   status: "healthy" | "degraded" | "offline";
   unsupported_workload_classes: UnsupportedWorkloadClass[];
   notes: string;
+  /** Live discovery telemetry (docs/discovery.md) — distinct from
+   * capacity_units_allocated/utilization_pct below, which are Forgeway's
+   * own placement-bookkeeping concept. null for every fixture-sourced
+   * target. */
+  observed_gpu_utilization_pct: number | null;
+  observed_memory_utilization_pct: number | null;
+  /** ISO 8601 timestamp; null for fixture-sourced targets. */
+  discovered_at: string | null;
   free_capacity_units: number;
   utilization_pct: number;
+  /** Vendor-neutral alias for capacity_units_total. */
+  accelerator_count: number;
 }
 
 export interface SLO {

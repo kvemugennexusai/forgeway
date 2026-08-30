@@ -1,0 +1,30 @@
+{
+  "schema_version": "forgeway/v0.1",
+  "compute_target_id": "nvidia-h100-dc",
+  "workload_id": "wl-llama70b-rt",
+  "configuration": null,
+  "metrics": {
+    "throughput_tokens_per_s_per_replica": {
+      "value": 1050.0,
+      "confidence": 97.0,
+      "provenance": "MEASURED",
+      "range_low": 990.0,
+      "range_high": 1100.0,
+      "source": "Production telemetry, trailing 24h window (current placement)"
+    },
+    "p99_latency_ms_per_replica": {
+      "value": 390.0,
+      "confidence": 97.0,
+      "provenance": "MEASURED",
+      "range_low": 370.0,
+      "range_high": 410.0,
+      "source": "Production telemetry, trailing 24h window (current placement)"
+    }
+  },
+  "provenance": "MEASURED",
+  "confidence": 97.0,
+  "source": "Production telemetry, trailing 24h window (current placement)",
+  "timestamp": null,
+  "forgeway_version": "0.1.0",
+  "benchmark_run_id": null
+}

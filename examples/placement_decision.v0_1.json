@@ -1,0 +1,107 @@
+{
+  "schema_version": "forgeway/v0.1",
+  "workload_id": "wl-llama70b-rt",
+  "workload_name": "llama-3.1-70b-chat — realtime inference",
+  "slo": {
+    "p99_latency_ms": 450.0,
+    "min_throughput_tokens_per_s": 1800.0,
+    "availability_pct": 99.9
+  },
+  "current_placement": {
+    "target_id": "nvidia-h100-dc",
+    "replica_count": 2,
+    "measured_p99_latency_ms": 390.0,
+    "measured_throughput_tokens_per_s_per_replica": 1050.0,
+    "cost_per_hr": 8.2,
+    "provenance": "MEASURED",
+    "source": "Production telemetry, trailing 24h window"
+  },
+  "evaluated_targets": [
+    "nvidia-h100-dc",
+    "nvidia-l40s",
+    "amd-mi300x",
+    "intel-gaudi3",
+    "aws-trainium2",
+    "nvidia-jetson-thor",
+    "local-nvidia-lab"
+  ],
+  "feasible_targets": [
+    "nvidia-h100-dc",
+    "amd-mi300x"
+  ],
+  "rejected_targets": [
+    {
+      "target_id": "nvidia-l40s",
+      "target_label": "L40S 48GB",
+      "reasons": [
+        "78 GB required (weights + KV cache) exceeds 48 GB/device; tensor-parallel split across devices is not modeled for this target profile"
+      ]
+    },
+    {
+      "target_id": "intel-gaudi3",
+      "target_label": "Gaudi 3 128GB",
+      "reasons": [
+        "Continuous-batching low-latency serving runtime not qualified for this workload class on Gaudi 3 in the current software-stack snapshot."
+      ]
+    },
+    {
+      "target_id": "aws-trainium2",
+      "target_label": "Trainium2 (trn2)",
+      "reasons": [
+        "Neuron SDK realtime continuous-batching serving path not qualified for this workload class in the current release snapshot."
+      ]
+    },
+    {
+      "target_id": "nvidia-jetson-thor",
+      "target_label": "Jetson AGX Thor 128GB",
+      "reasons": [
+        "'fp8' is not among the supported precisions on Jetson AGX Thor 128GB (fp16, int8)"
+      ]
+    },
+    {
+      "target_id": "local-nvidia-lab",
+      "target_label": "RTX 6000 Ada (lab bench, 2x)",
+      "reasons": [
+        "78 GB required (weights + KV cache) exceeds 48 GB/device; tensor-parallel split across devices is not modeled for this target profile",
+        "'fp8' is not among the supported precisions on RTX 6000 Ada (lab bench, 2x) (fp16, bf16, int8)"
+      ]
+    }
+  ],
+  "recommended_target_id": "amd-mi300x",
+  "score_breakdown": {
+    "nvidia-h100-dc": {
+      "cost": 0.0,
+      "performance": 0.0,
+      "headroom": 1.0,
+      "weighted_score": 0.2
+    },
+    "amd-mi300x": {
+      "cost": 1.0,
+      "performance": 1.0,
+      "headroom": 0.0,
+      "weighted_score": 0.8
+    }
+  },
+  "confidence": 78.0,
+  "improvement_vs_current_placement": {
+    "current_target_id": "nvidia-h100-dc",
+    "current_cost_per_hr": 8.2,
+    "recommended_cost_per_hr": 5.7,
+    "cost_savings_pct": 30.5,
+    "slo_met": true
+  },
+  "evidence_references": [
+    {
+      "label": "MI300X 192GB — on-demand price",
+      "source": "Cloud on-demand list price, 192GB instance, captured 2026-08"
+    },
+    {
+      "label": "MI300X 192GB — throughput, this workload",
+      "source": "Performance model calibrated against published MI300X inference benchmarks for 70B-parameter dense transformers, bf16, single-device placement (fits without tensor parallel at 192GB/device)"
+    },
+    {
+      "label": "MI300X 192GB — P99 latency, this workload",
+      "source": "Performance model calibrated against published MI300X inference benchmarks for 70B-parameter dense transformers, bf16, single-device placement (fits without tensor parallel at 192GB/device)"
+    }
+  ]
+}

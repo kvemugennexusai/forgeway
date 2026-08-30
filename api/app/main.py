@@ -12,6 +12,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.core.version import FORGEWAY_VERSION
 from app.data.loader import load_workloads
 from app.engine.decision import run_decision
 from app.models import ScenarioParams, ScenarioType
@@ -50,7 +51,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Forgeway Decision Engine API",
     description="Feasibility, prediction, ranking and explanation for heterogeneous AI compute placement.",
-    version="0.1.0",
+    version=FORGEWAY_VERSION,
     lifespan=lifespan,
 )
 

@@ -1,0 +1,51 @@
+{
+  "schema_version": "forgeway/v0.1",
+  "id": "wl-llama70b-rt",
+  "name": "llama-3.1-70b-chat — realtime inference",
+  "model_family": "Llama 3.1 70B",
+  "model_params_billion": 70.0,
+  "workload_class": "realtime-inference",
+  "precision": "fp8",
+  "weights_footprint_gb": 70.0,
+  "kv_cache_overhead_gb": 8.0,
+  "baseline_concurrency": 64,
+  "slo": {
+    "p99_latency_ms": 450.0,
+    "min_throughput_tokens_per_s": 1800.0,
+    "availability_pct": 99.9
+  },
+  "policy": {
+    "allowed_vendors": [
+      "nvidia",
+      "amd",
+      "intel",
+      "aws"
+    ],
+    "denied_vendors": [],
+    "allowed_regions": [
+      "us-east-1",
+      "us-central-1",
+      "us-west-2",
+      "edge",
+      "on-prem"
+    ],
+    "budget_ceiling_per_hr": 25.0
+  },
+  "current_placement": {
+    "target_id": "nvidia-h100-dc",
+    "replica_count": 2,
+    "measured_p99_latency_ms": 390.0,
+    "measured_throughput_tokens_per_s_per_replica": 1050.0,
+    "cost_per_hr": 8.2,
+    "provenance": "MEASURED",
+    "source": "Production telemetry, trailing 24h window"
+  },
+  "objective_weights": {
+    "cost": 0.5,
+    "performance": 0.3,
+    "headroom": 0.2
+  },
+  "min_confidence_pct": 70.0,
+  "tokens_per_request": 90.0,
+  "reanalyze": true
+}

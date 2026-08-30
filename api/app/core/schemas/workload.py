@@ -1,6 +1,13 @@
 """The workload schema — what a caller needs to know about one deployable
 AI workload to place it: its footprint, its SLO, its enterprise policy
-constraints, and where it runs today."""
+constraints, and where it runs today.
+
+This is the forgeway/v0.1 AIWorkload contract (see docs/schemas.md and
+app.core.schemas.v0_1). The class below keeps the name `Workload` — it's
+used throughout this codebase's engine, routers, and tests — and
+`AIWorkload` is exported as a plain alias for the same class from
+app.core.schemas.v0_1, so external/formal references can use the
+vendor-neutral name without any internal rename."""
 from __future__ import annotations
 
 from typing import Literal, Optional
@@ -8,6 +15,8 @@ from typing import Literal, Optional
 from pydantic import BaseModel, Field, field_validator
 
 from app.core.schemas.evidence import Metric, Provenance
+
+SCHEMA_VERSION = "forgeway/v0.1"
 
 WorkloadClass = Literal["realtime-inference", "batch-inference", "training"]
 
@@ -64,6 +73,7 @@ class CurrentPlacement(BaseModel):
 
 
 class Workload(BaseModel):
+    schema_version: Literal["forgeway/v0.1"] = SCHEMA_VERSION
     id: str
     name: str
     model_family: str

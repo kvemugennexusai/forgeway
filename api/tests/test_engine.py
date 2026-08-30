@@ -18,6 +18,7 @@ from __future__ import annotations
 
 from app.core.engine.feasibility import evaluate_feasibility
 from app.core.engine.scoring import score_candidate
+from app.core.schemas import PerformanceEvidence
 from app.data.loader import get_workload
 from app.engine.decision import run_decision
 from app.models import (
@@ -167,7 +168,7 @@ def test_latency_slo_violation_rejects_target():
     candidate = score_candidate(
         workload=workload,
         target=target,
-        profile=profile,
+        evidence=PerformanceEvidence.from_performance_profile(profile),
         checks=checks,
         required_throughput=workload.slo.min_throughput_tokens_per_s,
         free_capacity_units=target.free_capacity_units,
@@ -190,7 +191,7 @@ def test_hard_constraints_are_never_folded_into_the_weighted_score():
     candidate = score_candidate(
         workload=workload,
         target=target,
-        profile=make_profile(),
+        evidence=PerformanceEvidence.from_performance_profile(make_profile()),
         checks=checks,
         required_throughput=workload.slo.min_throughput_tokens_per_s,
         free_capacity_units=target.free_capacity_units,

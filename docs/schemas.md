@@ -90,16 +90,24 @@ class object, not a subtype). One deployable AI workload to place.
 
 ## 3. PerformanceEvidence
 
-`api/app/core/schemas/v0_1/performance_evidence.py`. A portable record of
-what's known about running one workload on one compute target — new in
-v0.1, built via `PerformanceEvidence.from_performance_profile(profile)`.
+`api/app/core/schemas/performance_evidence.py`. A portable record of
+what's known about running one workload on one compute target — built via
+`PerformanceEvidence.from_performance_profile(profile)` (fixture data) or
+by a real `forgeway bench` run (`docs/benchmarking.md`).
+
+Originally introduced as a v0.1-only formal contract; promoted into
+`app.core.schemas` proper (same move already made for `ComputeTarget` and
+`Workload`/`AIWorkload`) now that the placement engine actually consumes
+it — see [`docs/decision-engine.md`](decision-engine.md).
+`app.core.schemas.v0_1.PerformanceEvidence` still re-exports the same
+class under the same formal name; nothing importing it needs to change.
 
 | Field | Type | Notes |
 |---|---|---|
 | `schema_version` | `"forgeway/v0.1"` | |
 | `compute_target_id`, `workload_id` | `str` | |
 | `configuration` | `Optional[str]` | free-text run description (replica count, tensor-parallel degree, ...) when known — not populated by today's fixtures |
-| `metrics` | `dict[str, Metric]` | today always `throughput_tokens_per_s_per_replica` + `p99_latency_ms_per_replica`; a dict (not two fixed fields) so a future metric doesn't need a schema change |
+| `metrics` | `dict[str, Metric]` | today always `throughput_tokens_per_s_per_replica` + `p99_latency_ms_per_replica` (`app.core.schemas.THROUGHPUT_METRIC_KEY` / `LATENCY_METRIC_KEY` — the canonical keys `app.core.engine.evidence_selection` requires); a dict (not two fixed fields) so a future metric doesn't need a schema change |
 | `provenance` | `"MEASURED" \| "PUBLISHED" \| "MODELED"` | the *weakest* provenance among `metrics` — never claims better evidence than its least-certain input |
 | `confidence` | `float` (0-100) | the weakest-link confidence among `metrics` |
 | `source` | `str` | representative source string (today's fixtures give every metric in a row the same source) |
@@ -153,6 +161,16 @@ than its weakest contributing input:
 - `MODELED` — estimated (a performance model, an amortized cost estimate);
   never presented as `MEASURED`.
 
+`Metric` also carries an `evidence_reference` field (`Optional[str]`) —
+traceable back to *which* record a value came from: a real
+`benchmark_run_id` when it came from a `forgeway bench` run selected via
+`app.core.engine.evidence_selection`, a synthetic
+`fixture-evidence:<target_id>:<workload_id>` descriptor for fixture data,
+or `None` for metrics outside the evidence-selection path (e.g.
+`ComputeTarget.price_per_hr_per_unit`, which has its own `source` string
+and isn't part of `PerformanceEvidence`). See
+[`docs/decision-engine.md`](decision-engine.md).
+
 ## Examples
 
 [`examples/`](../examples/) has one real, generated instance of each
@@ -161,10 +179,14 @@ one came from.
 
 ## What's out of scope for this pass
 
-- No HTTP route serves `PerformanceEvidence` or `PlacementDecision` today —
-  they're proven correct against real data via tests, not wired into the
-  API surface. Doing that is a reasonable next step once there's an actual
-  second consumer that needs the versioned shape over the wire.
+- No HTTP route serves `PerformanceEvidence` or `PlacementDecision` as a
+  response body today. `PerformanceEvidence` *is* now consumed internally
+  by the placement engine (`docs/decision-engine.md`) — every
+  `/api/analyze` call selects among `PerformanceEvidence` candidates
+  under the hood — but nothing exposes the record itself over HTTP.
+  `PlacementDecision` remains proven only via tests. Serving either
+  directly is a reasonable next step once there's an actual second
+  consumer that needs the versioned shape over the wire.
 - `runtime_support` is real and typed but `None` for every current fixture —
   there's no structured runtime/framework data to populate it with yet.
 - Split-placement decisions aren't representable in `PlacementDecision`

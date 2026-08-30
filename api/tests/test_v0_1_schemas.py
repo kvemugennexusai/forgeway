@@ -18,10 +18,11 @@ from pathlib import Path
 
 import pytest
 
+from app.core.engine.evidence_selection import select_evidence
 from app.core.engine.feasibility import evaluate_feasibility
 from app.core.engine.ranking import normalize_and_weight
 from app.core.engine.scoring import score_candidate
-from app.core.schemas import CandidateEvaluation, PredictedOutcome
+from app.core.schemas import LATENCY_METRIC_KEY, THROUGHPUT_METRIC_KEY, CandidateEvaluation, PredictedOutcome
 from app.core.schemas.v0_1 import (
     SCHEMA_VERSION,
     AIWorkload,
@@ -36,6 +37,7 @@ from app.data.loader import (
     load_performance_profiles,
     load_workloads,
 )
+from app.engine.evidence_gateway import gather_evidence_candidates
 
 # --------------------------------------------------------------------------
 # ComputeTarget / AIWorkload — every real fixture row loads cleanly.
@@ -126,11 +128,14 @@ def _ranked_candidates(workload, *, min_confidence_pct: float | None = None):
     candidates = []
     for target in targets:
         checks = evaluate_feasibility(workload, target)
-        profile = get_performance_profile(workload.id, target.id)
+        evidence_candidates = gather_evidence_candidates(workload.id, target.id, benchmark_runs=[])
+        evidence = select_evidence(
+            evidence_candidates, required_metrics=(LATENCY_METRIC_KEY, THROUGHPUT_METRIC_KEY)
+        )
         candidate = score_candidate(
             workload=workload,
             target=target,
-            profile=profile,
+            evidence=evidence,
             checks=checks,
             required_throughput=workload.slo.min_throughput_tokens_per_s,
             free_capacity_units=target.free_capacity_units,

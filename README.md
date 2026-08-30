@@ -253,6 +253,19 @@ cd api && source .venv/bin/activate
 forgeway discover
 ```
 
+## CLI: benchmarking
+
+`forgeway bench` runs one LLM inference benchmark — `vllm bench latency`, prioritizing
+`meta-llama/Llama-3.1-8B-Instruct` — on the local NVIDIA GPU, and normalizes the real, measured
+result into a `PerformanceEvidence` record (saved locally; `forgeway runs` lists past runs).
+Requires vLLM and a CUDA GPU, separately from the setup above; see
+[`docs/benchmarking.md`](docs/benchmarking.md) for dependencies, limitations, and reproducibility
+caveats.
+
+```bash
+forgeway bench --model meta-llama/Llama-3.1-8B-Instruct --input-tokens 512 --output-tokens 128 --concurrency 1
+```
+
 ---
 
 ## What's implemented vs. not
@@ -265,11 +278,19 @@ recommendation outright; capacity-aware split placement that itself respects the
 gate; six named scenario presets, each backend-owned and mutation-free, with a BEFORE/EVENT/
 AFTER comparison and an explicit change explanation; every route in the product spec,
 fixture-driven; one real hardware discovery adapter (`forgeway discover`, local NVIDIA GPUs via
-`nvidia-smi` — see [`docs/discovery.md`](docs/discovery.md)), standalone from the web demo.
+`nvidia-smi` — see [`docs/discovery.md`](docs/discovery.md)) and one real benchmark path
+(`forgeway bench`, `vllm bench latency`, `provenance: MEASURED` — see
+[`docs/benchmarking.md`](docs/benchmarking.md)); the placement engine's evidence path is now
+unified across fixture data and any real, locally saved `forgeway bench` run for a matching
+workload/target (`MEASURED > PUBLISHED > MODELED` — see
+[`docs/decision-engine.md`](docs/decision-engine.md)).
 
 **Not implemented (by design, this build):** the web demo above still runs entirely on
 fixtures — no cloud API calls, no live telemetry feeding it, no Kubernetes; `forgeway discover`
-is real local hardware discovery, but it isn't wired into the demo's fixtures, store, or UI yet.
+is standalone (not wired into placement decisions at all); `forgeway bench`'s saved runs *are*
+wired into the decision engine's evidence path, but its own metric key names don't yet match
+what the engine looks for, so a real run doesn't currently affect an existing demo workload's
+recommendation — see `docs/decision-engine.md`'s "what's out of scope" section.
 No persistence beyond an in-memory store (restart the API and every simulated recommendation is
 gone; the baseline Insight reseeds). No custom workload authoring in `/analyze` — only the
 fixture workload library. No LLM in the decision path — the deterministic engine decides;

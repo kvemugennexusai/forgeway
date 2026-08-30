@@ -14,7 +14,12 @@ from app.core.schemas.engine import (
     PredictedOutcome,
     Prediction,
 )
-from app.core.schemas.evidence import Metric, Provenance
+from app.core.schemas.evidence import PROVENANCE_RANK, Metric, Provenance
+from app.core.schemas.performance_evidence import (
+    LATENCY_METRIC_KEY,
+    THROUGHPUT_METRIC_KEY,
+    PerformanceEvidence,
+)
 from app.core.schemas.workload import (
     SLO,
     CurrentPlacement,
@@ -36,6 +41,10 @@ __all__ = [
     "Prediction",
     "Metric",
     "Provenance",
+    "PROVENANCE_RANK",
+    "PerformanceEvidence",
+    "LATENCY_METRIC_KEY",
+    "THROUGHPUT_METRIC_KEY",
     "SLO",
     "CurrentPlacement",
     "EnterprisePolicy",

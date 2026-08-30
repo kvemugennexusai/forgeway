@@ -8,9 +8,15 @@ Four concepts, matching docs/schemas.md:
   AIWorkload          alias for app.core.schemas.workload.Workload, same
                       reason — the vendor-neutral name for an existing type,
                       not a new one.
-  PerformanceEvidence new: a portable record of one (workload, target)
+  PerformanceEvidence a portable record of one (workload, target)
                       performance observation, built via
-                      PerformanceEvidence.from_performance_profile().
+                      PerformanceEvidence.from_performance_profile() or a
+                      real `forgeway bench` run. Also the shape the
+                      placement engine itself consumes — see
+                      docs/decision-engine.md — which is why its
+                      definition now lives in app.core.schemas proper
+                      (this module just re-exports it, same as
+                      ComputeTarget and AIWorkload below).
   PlacementDecision   new: a vendor-neutral summary of one placement
                       decision, built via
                       PlacementDecision.from_candidates().
@@ -22,7 +28,7 @@ serialized instances.
 from __future__ import annotations
 
 from app.core.schemas.compute import ComputeTarget
-from app.core.schemas.v0_1.performance_evidence import PerformanceEvidence
+from app.core.schemas.performance_evidence import PerformanceEvidence
 from app.core.schemas.v0_1.placement_decision import (
     EvidenceReference,
     ImprovementVsCurrentPlacement,

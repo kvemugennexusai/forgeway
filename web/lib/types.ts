@@ -17,6 +17,12 @@ export interface Metric {
   range_low: number | null;
   range_high: number | null;
   source: string;
+  /** Traceable pointer back to the PerformanceEvidence this metric was
+   * selected from (docs/decision-engine.md) — a benchmark_run_id for a
+   * real measured run, or a synthetic fixture-evidence descriptor
+   * otherwise. null for metrics outside the evidence-selection path
+   * (e.g. ComputeTarget.price_per_hr_per_unit). */
+  evidence_reference: string | null;
 }
 
 /** @deprecated use Metric */

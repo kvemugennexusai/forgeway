@@ -1,15 +1,20 @@
-"""PerformanceEvidence (forgeway/v0.1) — a portable, timestamped record of
-what's known about running one workload on one compute target.
+"""PerformanceEvidence — a portable, timestamped record of what's known
+about running one workload on one compute target, and the single shape
+app.core.engine.evidence_selection and app.core.engine.scoring consume.
 
-This formalizes a concept the engine already has, spread across two
-places: `app.core.schemas.PerformanceProfile` (the fixture-shaped pair of
-throughput/latency Metrics `app.core.engine.scoring` reads) and the
-`Prediction` it's turned into once a target's price is attached. Neither of
-those carries a timestamp, a Forgeway version, or a benchmark-run id, and
-neither is meant to be handed to an external caller as a standalone record.
-PerformanceEvidence is that standalone record — built from a
-PerformanceProfile via `from_performance_profile()`, additive only: nothing
-in app.core.engine changes to produce or consume this type.
+Originally introduced as a v0.1-only formal contract (see
+docs/schemas.md), not yet used internally. It's promoted here, into
+app.core.schemas proper, now that the placement engine actually consumes
+it (docs/decision-engine.md) — the same move already made for
+ComputeTarget and Workload/AIWorkload: the core engine-facing definition
+lives here, and app.core.schemas.v0_1 re-exports it unchanged under the
+same formal name. Nothing importing `app.core.schemas.v0_1.PerformanceEvidence`
+needs to change.
+
+Built from a PerformanceProfile fixture row via
+`from_performance_profile()`, or from a real benchmark run
+(app.benchmark.evidence.build_performance_evidence) — either way, the
+engine only ever sees this one shape.
 """
 from __future__ import annotations
 
@@ -18,19 +23,24 @@ from typing import Literal, Optional
 
 from pydantic import BaseModel, Field
 
-from app.core.schemas.evidence import Metric, Provenance
+from app.core.schemas.evidence import PROVENANCE_RANK, Metric, Provenance
 from app.core.schemas.workload import PerformanceProfile
 from app.core.version import FORGEWAY_VERSION
 
 SCHEMA_VERSION = "forgeway/v0.1"
 
-_PROVENANCE_RANK: dict[Provenance, int] = {"MODELED": 0, "PUBLISHED": 1, "MEASURED": 2}
+#: Canonical per-replica metric keys app.core.engine.scoring needs from a
+#: selected PerformanceEvidence. Both fixture-derived evidence (below) and
+#: a real benchmark run must use these exact keys to be usable by the
+#: engine — see docs/decision-engine.md on why key names aren't fuzzy-matched.
+LATENCY_METRIC_KEY = "p99_latency_ms_per_replica"
+THROUGHPUT_METRIC_KEY = "throughput_tokens_per_s_per_replica"
 
 
 def _weakest_provenance(provenances: list[Provenance]) -> Provenance:
     """The least-certain provenance among a set — a record is never allowed
     to claim better evidence than its weakest contributing metric."""
-    return min(provenances, key=lambda p: _PROVENANCE_RANK[p])
+    return min(provenances, key=lambda p: PROVENANCE_RANK[p])
 
 
 class PerformanceEvidence(BaseModel):
@@ -62,8 +72,8 @@ class PerformanceEvidence(BaseModel):
         benchmark_run_id: Optional[str] = None,
     ) -> "PerformanceEvidence":
         metrics = {
-            "throughput_tokens_per_s_per_replica": profile.throughput_tokens_per_s_per_replica,
-            "p99_latency_ms_per_replica": profile.p99_latency_ms_per_replica,
+            THROUGHPUT_METRIC_KEY: profile.throughput_tokens_per_s_per_replica,
+            LATENCY_METRIC_KEY: profile.p99_latency_ms_per_replica,
         }
         confidence = min(m.confidence for m in metrics.values())
         provenance = _weakest_provenance([m.provenance for m in metrics.values()])

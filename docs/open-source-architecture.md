@@ -31,9 +31,9 @@ it never re-implements feasibility, sizing, or ranking.
 | 2. Workload schema | ✅ moved | `core/schemas/workload.py` |
 | 3. Evidence schema | ✅ moved | `core/schemas/evidence.py` (`Metric`, `Provenance`) |
 | 4. Compatibility/feasibility engine | ✅ moved | `core/engine/feasibility.py` |
-| 5. Recommendation/scoring engine | ⚠️ partially moved | `core/engine/scoring.py` (sizing + SLO gate) and `core/engine/ranking.py` (normalize + weight) are core; the surrounding orchestration — confidence gate, split fallback, evidence-for-UI, reasoning narrative — stays product-level in `app/engine/decision.py` (see below) |
+| 5. Recommendation/scoring engine | ⚠️ partially moved | `core/engine/scoring.py` (sizing + SLO gate), `core/engine/ranking.py` (normalize + weight), and now `core/engine/evidence_selection.py` (choosing which `PerformanceEvidence` to score against — see [`docs/decision-engine.md`](decision-engine.md)) are core; the surrounding orchestration — confidence gate, split fallback, evidence-for-UI, reasoning narrative — stays product-level in `app/engine/decision.py` (see below) |
 | 6. Hardware discovery adapters | ✅ first adapter shipped | `app/discovery/` — `NvidiaDiscoveryAdapter`, local NVIDIA GPUs only via `nvidia-smi`. See [`docs/discovery.md`](discovery.md). Not yet wired into `app/data/loader.py` or the web UI — it's reachable only via the CLI below. |
-| 7. Benchmark runner | 📋 not started | no code exists yet; `app/data/loader.py` is the seam |
+| 7. Benchmark runner | ✅ first path shipped | `app/benchmark/` — `forgeway bench`, one path only: `vllm bench latency` on local NVIDIA GPUs, prioritizing Llama 3.1 8B Instruct. See [`docs/benchmarking.md`](benchmarking.md). Not wired into `app/data/loader.py` or the web UI. |
 | 8. CLI | ✅ first command shipped | `app/cli/` — `forgeway discover` (installed via `api/pyproject.toml`'s console-script entry point). One subcommand only; see docs/discovery.md. |
 
 ## Directory layout
@@ -100,20 +100,17 @@ caller (a CLI, a different UI) that needs a non-narrative answer.
 
 ## What's deliberately not done
 
-A benchmark runner (goal item 7) still has no implementation — `app/data/
-loader.py` still only reads `app/fixtures/*.json`, and remains the seam a
-real benchmark runner (producing measured `PerformanceProfile` rows instead
-of fixture ones) would plug into without changing a line of `core/`.
-
-Hardware discovery (item 6) now has a first real adapter
-(`app/discovery/`, NVIDIA-only — see `docs/discovery.md`) and a CLI (item
-8, `app/cli/`, one command: `forgeway discover`) — but discovery is
-deliberately **not** wired into `app/data/loader.py`, `app/state.py`, or
-the web UI yet. `forgeway discover` today only prints/emits a
-`ComputeTarget`; it doesn't feed it into a running decision or the
-estate dashboard. That integration is the natural next step once there's
-a concrete need for it (e.g. seeding the fixture set from real hardware,
-or a live-inventory mode for `/infrastructure`).
+Hardware discovery (item 6, `app/discovery/`) and the benchmark runner
+(item 7, `app/benchmark/`) both now have a first real path — see
+`docs/discovery.md` and `docs/benchmarking.md` — but neither is wired into
+`app/data/loader.py`, `app/state.py`, or the web UI. `forgeway discover`
+only prints/emits a `ComputeTarget`; `forgeway bench` only prints/emits and
+locally saves a `PerformanceEvidence`. Neither feeds a running decision or
+the estate dashboard, and `app/data/loader.py` still only reads
+`app/fixtures/*.json`. That integration is the natural next step once
+there's a concrete need for it (e.g. seeding the fixture set from real
+hardware/benchmark results, or a live-inventory mode for
+`/infrastructure`).
 
 ## Import compatibility
 

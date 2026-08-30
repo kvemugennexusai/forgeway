@@ -47,10 +47,13 @@ from __future__ import annotations
 
 from typing import Optional
 
+from app.benchmark.store import list_runs
 from app.core.engine.feasibility import evaluate_feasibility
 from app.core.engine.ranking import normalize_and_weight
 from app.core.engine.scoring import score_candidate, size_replicas
-from app.data.loader import get_performance_profile, load_compute_targets
+from app.core.schemas import LATENCY_METRIC_KEY, THROUGHPUT_METRIC_KEY, PerformanceEvidence
+from app.data.loader import load_compute_targets
+from app.engine.evidence_gateway import resolve_evidence
 from app.models import (
     CandidateEvaluation,
     Evidence,
@@ -62,16 +65,25 @@ from app.models import (
     Workload,
 )
 
+#: The two per-replica metrics app.core.engine.scoring needs from whichever
+#: PerformanceEvidence app.core.engine.evidence_selection selects.
+REQUIRED_METRICS = (LATENCY_METRIC_KEY, THROUGHPUT_METRIC_KEY)
+
 
 def _build_unmitigated_projection(
-    workload: Workload, prior: Optional[Recommendation], effective_min_throughput: float
+    workload: Workload,
+    prior: Optional[Recommendation],
+    effective_min_throughput: float,
+    benchmark_runs: list[PerformanceEvidence],
 ) -> Optional[UnmitigatedProjection]:
     if prior is None or prior.recommended_target_id is None or prior.recommended is None:
         return None
 
     target_id = prior.recommended_target_id
-    profile = get_performance_profile(workload.id, target_id)
-    if profile is None:
+    evidence = resolve_evidence(
+        workload.id, target_id, benchmark_runs=benchmark_runs, required_metrics=REQUIRED_METRICS
+    )
+    if evidence is None:
         return None
 
     target = next((t for t in load_compute_targets() if t.id == target_id), None)
@@ -79,11 +91,11 @@ def _build_unmitigated_projection(
         return None
 
     replica_count = prior.recommended.replica_count
-    throughput_per_replica = profile.throughput_tokens_per_s_per_replica.value
+    throughput_per_replica = evidence.metrics[THROUGHPUT_METRIC_KEY].value
     available = replica_count * throughput_per_replica
     ratio = effective_min_throughput / available if available > 0 else float("inf")
 
-    base_p99 = profile.p99_latency_ms_per_replica.value
+    base_p99 = evidence.metrics[LATENCY_METRIC_KEY].value
     if ratio <= 1:
         predicted_p99 = base_p99
     else:
@@ -120,6 +132,7 @@ def _greedy_split(
     required_throughput: float,
     capacity_overrides: dict[str, int],
     effective_min_confidence: float,
+    benchmark_runs: list[PerformanceEvidence],
 ) -> tuple[list[SplitAllocation], float]:
     # A split is still bound by the confidence gate: contributing a slice of
     # traffic to a target doesn't need it to clear the SLO alone, but it must
@@ -143,11 +156,13 @@ def _greedy_split(
         if remaining_required <= 0:
             break
         target = targets_by_id[candidate.target_id]
-        profile = get_performance_profile(workload.id, candidate.target_id)
-        if profile is None or target is None:
+        evidence = resolve_evidence(
+            workload.id, candidate.target_id, benchmark_runs=benchmark_runs, required_metrics=REQUIRED_METRICS
+        )
+        if evidence is None or target is None:
             continue
         price = target.price_per_hr_per_unit.value
-        throughput_per_replica = profile.throughput_tokens_per_s_per_replica.value
+        throughput_per_replica = evidence.metrics[THROUGHPUT_METRIC_KEY].value
 
         # Same sizing formula as the single-target path (core.engine.scoring
         # .size_replicas) — just applied against what's left to cover after
@@ -176,7 +191,7 @@ def _greedy_split(
                 throughput_tokens_per_s=throughput_added,
                 throughput_share_pct=0.0,
                 cost_per_hr=round(cost_added, 2),
-                p99_latency_ms=profile.p99_latency_ms_per_replica.value,
+                p99_latency_ms=evidence.metrics[LATENCY_METRIC_KEY].value,
             )
         )
 
@@ -213,16 +228,24 @@ def run_decision(
     targets = load_compute_targets()
     targets_by_id = {t.id: t for t in targets}
     candidates: list[CandidateEvaluation] = []
+    # Fetched once per decision, not once per target: every locally saved
+    # `forgeway bench` run becomes a scoring candidate wherever its
+    # workload_id/compute_target_id match (app.engine.evidence_gateway) —
+    # re-reading that directory from disk for each of the estate's targets
+    # would be needless, repeated I/O for what's typically a handful of files.
+    benchmark_runs = list_runs()
 
     # Steps 3-6, per target.
     for target in targets:
         checks = evaluate_feasibility(workload, target)
-        profile = get_performance_profile(workload.id, target.id)
+        evidence = resolve_evidence(
+            workload.id, target.id, benchmark_runs=benchmark_runs, required_metrics=REQUIRED_METRICS
+        )
         free_capacity = capacity_overrides.get(target.id, target.free_capacity_units)
         candidate = score_candidate(
             workload=scoring_workload,
             target=target,
-            profile=profile,
+            evidence=evidence,
             checks=checks,
             required_throughput=effective_min_throughput,
             free_capacity_units=free_capacity,
@@ -276,7 +299,12 @@ def run_decision(
                 c.why_not_chosen = "; ".join(c.slo_violations) or c.capacity_note
     else:
         split_allocation, shortfall = _greedy_split(
-            scoring_workload, candidates, effective_min_throughput, capacity_overrides, effective_min_confidence
+            scoring_workload,
+            candidates,
+            effective_min_throughput,
+            capacity_overrides,
+            effective_min_confidence,
+            benchmark_runs,
         )
         achieved = effective_min_throughput - shortfall
         for c in candidates:
@@ -392,7 +420,7 @@ def run_decision(
 
     unmitigated = None
     if scenario.type.value == "demand_spike":
-        unmitigated = _build_unmitigated_projection(workload, prior, effective_min_throughput)
+        unmitigated = _build_unmitigated_projection(workload, prior, effective_min_throughput, benchmark_runs)
 
     if recommended and recommended_target_id:
         t = targets_by_id[recommended_target_id]

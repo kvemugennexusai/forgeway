@@ -2,13 +2,21 @@
 the workload's SLO at the scale the workload actually needs (step 6), and
 sizes the placement.
 
-The raw Prediction (per replica, straight from the performance-profile
-evidence + the target's priced Metric) is kept separate from the *sized*
-outcome (how many replicas this scenario needs, and whether that sizing
-holds the SLO) — retrieval and scale are different concerns. Normalizing
-across candidates and applying objective weights happens one level up, in
+The raw Prediction (per replica, straight from selected PerformanceEvidence
++ the target's priced Metric) is kept separate from the *sized* outcome
+(how many replicas this scenario needs, and whether that sizing holds the
+SLO) — retrieval and scale are different concerns. Normalizing across
+candidates and applying objective weights happens one level up, in
 app.core.engine.ranking, because those steps need the whole candidate set,
 not just one target.
+
+retrieve_prediction() does not choose between competing evidence — by the
+time it's called, app.core.engine.evidence_selection.select_evidence has
+already picked the one PerformanceEvidence to use (docs/decision-engine.md).
+This function's only job is extracting the two metrics the engine needs
+from it, by their canonical keys (app.core.schemas.LATENCY_METRIC_KEY /
+THROUGHPUT_METRIC_KEY), and stamping each with an evidence_reference
+pointing back to where it came from.
 """
 from __future__ import annotations
 
@@ -16,10 +24,12 @@ import math
 from dataclasses import dataclass
 
 from app.core.schemas import (
+    LATENCY_METRIC_KEY,
+    THROUGHPUT_METRIC_KEY,
     CandidateEvaluation,
     ComputeTarget,
     FeasibilityCheck,
-    PerformanceProfile,
+    PerformanceEvidence,
     PredictedOutcome,
     Prediction,
     Workload,
@@ -71,17 +81,28 @@ def size_replicas(
 
 
 def retrieve_prediction(
-    workload: Workload, target: ComputeTarget, profile: PerformanceProfile
+    workload: Workload, target: ComputeTarget, evidence: PerformanceEvidence
 ) -> Prediction:
-    """Step 5: retrieve the prediction for this (workload, target) pair.
-    Latency and throughput come straight from the performance-profile
-    evidence; cost is the target's own priced Metric — nothing here is
-    computed, only looked up."""
+    """Step 5: retrieve the prediction for this (workload, target) pair from
+    already-selected evidence. Latency and throughput come straight from
+    `evidence.metrics`, keyed by the canonical metric names; cost is the
+    target's own priced Metric — a separate evidence concern (pricing, not
+    performance), never part of PerformanceEvidence. Nothing here is
+    computed, only looked up and re-tagged with an evidence_reference."""
+    reference = evidence.benchmark_run_id or (
+        f"fixture-evidence:{evidence.compute_target_id}:{evidence.workload_id}"
+    )
+    latency_metric = evidence.metrics[LATENCY_METRIC_KEY].model_copy(
+        update={"evidence_reference": reference}
+    )
+    throughput_metric = evidence.metrics[THROUGHPUT_METRIC_KEY].model_copy(
+        update={"evidence_reference": reference}
+    )
     return Prediction(
         target_id=target.id,
         workload_id=workload.id,
-        latency_p99_ms=profile.p99_latency_ms_per_replica,
-        throughput_tokens_per_s=profile.throughput_tokens_per_s_per_replica,
+        latency_p99_ms=latency_metric,
+        throughput_tokens_per_s=throughput_metric,
         cost_per_hr=target.price_per_hr_per_unit,
     )
 
@@ -90,7 +111,7 @@ def score_candidate(
     *,
     workload: Workload,
     target: ComputeTarget,
-    profile: PerformanceProfile | None,
+    evidence: PerformanceEvidence | None,
     checks: list[FeasibilityCheck],
     required_throughput: float,
     free_capacity_units: int,
@@ -110,10 +131,15 @@ def score_candidate(
             rejection_reasons=failing,
         )
 
-    if profile is None:
+    if evidence is None:
+        # Either nothing was on file at all, or nothing on file carried
+        # every metric this scoring step needs (app.core.engine.
+        # evidence_selection.select_evidence already tried every candidate
+        # and found none usable) — both collapse to the same honest
+        # refusal: never score from an unmeasured, unmodeled assumption.
         reason = (
-            "No performance evidence on file for this workload on this target — "
-            "refusing to score from an unmeasured, unmodeled assumption."
+            "No trustworthy performance evidence on file for this workload on this "
+            "target — refusing to score from an unmeasured, unmodeled assumption."
         )
         return CandidateEvaluation(
             target_id=target.id,
@@ -126,7 +152,7 @@ def score_candidate(
         )
 
     # Step 5: retrieve the prediction.
-    prediction = retrieve_prediction(workload, target, profile)
+    prediction = retrieve_prediction(workload, target, evidence)
     throughput_per_replica = prediction.throughput_tokens_per_s.value
     p99 = prediction.latency_p99_ms.value
     price_per_unit = prediction.cost_per_hr.value

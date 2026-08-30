@@ -1,27 +1,33 @@
 """Proves app.core is actually decoupled from this product's fixture-backed
 data source — not just organized into a folder that looks decoupled.
 
-Nothing in this file imports app.data.loader (or anything else under
-app/engine, app/routers, app/state). Every ComputeTarget / Workload /
-PerformanceProfile below is constructed by hand. If a future change made
-app.core secretly depend on the fixture loader (or on any other product-
-layer module), this file would fail to even build its inputs, let alone
-run the pipeline.
+Nothing in this file imports app.data.loader, app.benchmark, or anything
+else under app/engine, app/routers, app/state. Every ComputeTarget /
+Workload / PerformanceProfile / PerformanceEvidence below is constructed
+by hand, and evidence selection (app.core.engine.evidence_selection) is
+exercised directly rather than through app.engine.evidence_gateway's
+fixture/benchmark-store gathering. If a future change made app.core
+secretly depend on the fixture loader or the benchmark store, this file
+would fail to even build its inputs, let alone run the pipeline.
 """
 from __future__ import annotations
 
 import pytest
 
+from app.core.engine.evidence_selection import select_evidence
 from app.core.engine.feasibility import evaluate_feasibility
 from app.core.engine.ranking import normalize_and_weight
 from app.core.engine.scoring import score_candidate
 from app.core.schemas import (
+    LATENCY_METRIC_KEY,
     SLO,
+    THROUGHPUT_METRIC_KEY,
     ComputeTarget,
     CurrentPlacement,
     EnterprisePolicy,
     Metric,
     ObjectiveWeights,
+    PerformanceEvidence,
     PerformanceProfile,
     Workload,
 )
@@ -105,18 +111,21 @@ def test_core_pipeline_runs_without_the_fixture_data_source():
     )
     targets = [target_a, target_b]
     targets_by_id = {t.id: t for t in targets}
-    profiles = {
-        "t-a": _profile(target_id="t-a"),
-        "t-b": _profile(target_id="t-b"),
+    evidences = {
+        "t-a": PerformanceEvidence.from_performance_profile(_profile(target_id="t-a")),
+        "t-b": PerformanceEvidence.from_performance_profile(_profile(target_id="t-b")),
     }
 
     candidates = []
     for target in targets:
         checks = evaluate_feasibility(workload, target)
+        evidence = select_evidence(
+            [evidences[target.id]], required_metrics=(LATENCY_METRIC_KEY, THROUGHPUT_METRIC_KEY)
+        )
         candidate = score_candidate(
             workload=workload,
             target=target,
-            profile=profiles.get(target.id),
+            evidence=evidence,
             checks=checks,
             required_throughput=workload.slo.min_throughput_tokens_per_s,
             free_capacity_units=target.free_capacity_units,
@@ -145,7 +154,7 @@ def test_normalize_and_weight_rejects_candidates_missing_predicted():
     unqualified = score_candidate(
         workload=workload,
         target=target,
-        profile=None,  # no evidence on file -> feasible=False, predicted=None
+        evidence=None,  # no evidence on file -> feasible=False, predicted=None
         checks=checks,
         required_throughput=workload.slo.min_throughput_tokens_per_s,
         free_capacity_units=target.free_capacity_units,

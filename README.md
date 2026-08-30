@@ -1,5 +1,6 @@
 # Forgeway
 
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-D22128?logo=apache&logoColor=white)](LICENSE)
 [![Schema forgeway/v0.1](https://img.shields.io/badge/schema-forgeway%2Fv0.1-blue)](docs/schemas.md)
 [![FastAPI](https://img.shields.io/badge/FastAPI-%3E%3D0.115-009688?logo=fastapi&logoColor=white)](api/requirements.txt)
 [![Pydantic](https://img.shields.io/badge/Pydantic-%3E%3D2.9-E92063?logo=pydantic&logoColor=white)](api/requirements.txt)
@@ -255,3 +256,9 @@ API calls, no live telemetry, no Kubernetes. No persistence beyond an in-memory 
 the API and every simulated recommendation is gone; the baseline Insight reseeds). No custom
 workload authoring in `/analyze` — only the fixture workload library. No LLM in the decision
 path — the deterministic engine decides; nothing here calls a model to place a workload.
+
+---
+
+## License
+
+Apache License 2.0 — see [`LICENSE`](LICENSE).

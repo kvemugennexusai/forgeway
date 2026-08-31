@@ -184,9 +184,11 @@ one came from.
   by the placement engine (`docs/decision-engine.md`) — every
   `/api/analyze` call selects among `PerformanceEvidence` candidates
   under the hood — but nothing exposes the record itself over HTTP.
-  `PlacementDecision` remains proven only via tests. Serving either
-  directly is a reasonable next step once there's an actual second
-  consumer that needs the versioned shape over the wire.
+  `PlacementDecision` is a real, live output too, just not over HTTP: the
+  CLI's `forgeway analyze --json` emits it directly (README.md's
+  end-to-end CLI flow). Serving either over HTTP is a reasonable next
+  step once there's an actual second consumer that needs the versioned
+  shape over the wire.
 - `runtime_support` is real and typed but `None` for every current fixture —
   there's no structured runtime/framework data to populate it with yet.
 - Split-placement decisions aren't representable in `PlacementDecision`

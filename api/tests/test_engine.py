@@ -19,7 +19,7 @@ from __future__ import annotations
 from app.core.engine.feasibility import evaluate_feasibility
 from app.core.engine.scoring import score_candidate
 from app.core.schemas import PerformanceEvidence
-from app.data.loader import get_workload
+from app.data.loader import get_workload, load_compute_targets
 from app.engine.decision import run_decision
 from app.models import (
     ComputeTarget,
@@ -232,6 +232,21 @@ def test_baseline_recommends_mi300x_over_h100():
 def test_recommendation_carries_the_workload_current_placement():
     workload, record = _baseline_llama()
     assert record.current_placement == workload.current_placement
+
+
+def test_targets_parameter_overrides_the_fixture_catalog():
+    """run_decision()'s optional `targets` parameter (added for
+    `forgeway analyze`, which can add a locally discovered target to the
+    fixture catalog) must actually restrict scoring to the supplied list,
+    not just be accepted and ignored."""
+    h100_only = [t for t in load_compute_targets() if t.id == "nvidia-h100-dc"]
+    _, record = _baseline_llama(targets=h100_only)
+
+    # MI300X isn't even in the candidate pool, so it can't win, even though
+    # it's the known baseline recommendation when targets defaults to the
+    # full fixture catalog (test_baseline_recommends_mi300x_over_h100).
+    assert record.recommended_target_id == "nvidia-h100-dc"
+    assert {c.target_id for c in record.candidates} == {"nvidia-h100-dc"}
     assert record.current_placement.target_id == "nvidia-h100-dc"
 
 

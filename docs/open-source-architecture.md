@@ -34,7 +34,7 @@ it never re-implements feasibility, sizing, or ranking.
 | 5. Recommendation/scoring engine | ⚠️ partially moved | `core/engine/scoring.py` (sizing + SLO gate), `core/engine/ranking.py` (normalize + weight), and now `core/engine/evidence_selection.py` (choosing which `PerformanceEvidence` to score against — see [`docs/decision-engine.md`](decision-engine.md)) are core; the surrounding orchestration — confidence gate, split fallback, evidence-for-UI, reasoning narrative — stays product-level in `app/engine/decision.py` (see below) |
 | 6. Hardware discovery adapters | ✅ first adapter shipped | `app/discovery/` — `NvidiaDiscoveryAdapter`, local NVIDIA GPUs only via `nvidia-smi`. See [`docs/discovery.md`](discovery.md). Not yet wired into `app/data/loader.py` or the web UI — it's reachable only via the CLI below. |
 | 7. Benchmark runner | ✅ first path shipped | `app/benchmark/` — `forgeway bench`, one path only: `vllm bench latency` on local NVIDIA GPUs, prioritizing Llama 3.1 8B Instruct. See [`docs/benchmarking.md`](benchmarking.md). Not wired into `app/data/loader.py` or the web UI. |
-| 8. CLI | ✅ first command shipped | `app/cli/` — `forgeway discover` (installed via `api/pyproject.toml`'s console-script entry point). One subcommand only; see docs/discovery.md. |
+| 8. CLI | ✅ core commands shipped | `app/cli/` (installed via `api/pyproject.toml`'s console-script entry point): `forgeway discover`, `forgeway bench` / `forgeway runs`, and `forgeway analyze` — the last of which calls `app/engine/decision.py::run_decision()` directly, the same function every web route calls. See docs/discovery.md, docs/benchmarking.md, docs/decision-engine.md, and README.md's end-to-end CLI flow. |
 
 ## Directory layout
 

@@ -148,6 +148,30 @@ clear the 85% bar, and — because it already wins on weighted score once
 both candidates qualify (same math as the workload's own default-confidence
 baseline) — the recommendation switches from H100 to MI300X.
 
+## Two callers, one engine
+
+`run_decision()` has exactly two callers: the web app's routers
+(`/api/analyze`, the estate insight panel, both simulation types) and the
+CLI's `forgeway analyze` (`docs/benchmarking.md`'s sibling command,
+README.md's end-to-end CLI flow). Neither reimplements any part of the
+11-step pipeline — `forgeway analyze` calls the identical function, then
+reframes its `candidates` as a vendor-neutral `PlacementDecision`
+(`PlacementDecision.from_candidates(workload, record.candidates)`,
+`docs/schemas.md`) instead of the product's own `Recommendation` shape.
+
+The one thing `forgeway analyze` needed that no existing caller did:
+scoring against a *different* set of compute targets than the fixture
+catalog (e.g. the fixture catalog plus a locally discovered target). Since
+every existing caller was hardcoded to `app/data/loader.py::
+load_compute_targets()`, `run_decision()` gained an optional `targets`
+parameter — `None` (the default) preserves the exact prior behavior for
+every existing caller; a caller that passes its own list uses that
+instead. `_greedy_split` and `_build_unmitigated_projection` (previously
+each calling `load_compute_targets()` independently) now receive the same
+`targets_by_id` `run_decision()` itself resolved, rather than re-fetching
+it — the same "resolve a shared resource once, thread it through" pattern
+already used for `benchmark_runs` above.
+
 ## The web UI
 
 `ComputeTarget`/`Workload`/`Prediction`/`Metric` shapes are unchanged

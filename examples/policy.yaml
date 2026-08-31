@@ -1,0 +1,19 @@
+# An EnterprisePolicy override (forgeway/v0.1 — docs/schemas.md), for
+# `forgeway analyze <workload> --policy examples/policy.yaml`.
+#
+# examples/workload.yaml's own embedded policy allows nvidia, amd, intel,
+# and aws across five regions, and the baseline recommendation (see
+# README.md's end-to-end CLI flow) is AMD's MI300X. This file represents a
+# stricter compliance policy — nvidia only, single-region — that the same
+# workload might need to satisfy under a different enterprise's rules.
+# Applying it changes the recommendation to NVIDIA's H100: MI300X is
+# excluded outright (denied vendor), and it's the only other target with
+# real performance evidence on file for this workload, so H100 becomes the
+# sole qualifying candidate. Try it:
+#
+#   forgeway analyze examples/workload.yaml
+#   forgeway analyze examples/workload.yaml --policy examples/policy.yaml
+allowed_vendors: [nvidia]
+denied_vendors: [amd]
+allowed_regions: [us-east-1]
+budget_ceiling_per_hr: 25.00

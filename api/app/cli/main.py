@@ -1,8 +1,10 @@
-"""The `forgeway` CLI: `forgeway discover`, `forgeway bench`, `forgeway runs`.
+"""The `forgeway` CLI: `forgeway discover`, `forgeway bench`, `forgeway runs`,
+`forgeway analyze`.
 
 Installed as a console script via api/pyproject.toml
 (`pip install -e api/`, or `python -m app.cli.main <command>` without
-installing). See docs/discovery.md and docs/benchmarking.md.
+installing). See docs/discovery.md, docs/benchmarking.md,
+docs/decision-engine.md, and README.md's end-to-end CLI flow section.
 """
 from __future__ import annotations
 
@@ -22,10 +24,14 @@ from app.benchmark.vllm_runner import (
     DEFAULT_WARMUP_ITERATIONS,
     run_vllm_bench_latency,
 )
-from app.core.schemas import ComputeTarget
-from app.core.schemas.v0_1 import PerformanceEvidence
+from app.cli.yaml_io import AnalyzeError, load_policy_yaml, load_workload_yaml
+from app.core.schemas import ComputeTarget, Workload
+from app.core.schemas.v0_1 import PerformanceEvidence, PlacementDecision
+from app.data.loader import load_compute_targets
 from app.discovery.adapter import DiscoveryAdapter, DiscoveryError
 from app.discovery.nvidia import NvidiaDiscoveryAdapter
+from app.engine.decision import run_decision
+from app.models import Recommendation, ScenarioParams, ScenarioType
 
 #: Adapters to try, in order. Adding a vendor is adding one line here plus
 #: one new adapter class — see app/discovery/adapter.py.
@@ -192,6 +198,166 @@ def cmd_runs(args: argparse.Namespace) -> int:
     return 0
 
 
+def _confidence_label(confidence: Optional[float]) -> str:
+    """A simple, fixed-threshold convention for human-readable output —
+    not a statistically derived bucketing. NONE when no recommendation
+    was made at all (nothing to have confidence in)."""
+    if confidence is None:
+        return "NONE"
+    if confidence >= 90:
+        return "HIGH"
+    if confidence >= 70:
+        return "MEDIUM"
+    return "LOW"
+
+
+def format_analyze_human(
+    workload: Workload,
+    record: Recommendation,
+    decision: PlacementDecision,
+    targets_by_id: dict[str, ComputeTarget],
+    discovery_note: Optional[str],
+) -> str:
+    """Built from two views of the same run_decision() output: `record`
+    (Recommendation) for the narrative reasoning and full evidence
+    PlacementDecision deliberately doesn't carry, and `decision`
+    (PlacementDecision) for confidence and rejection reasons — reusing
+    PlacementDecision.from_candidates()'s own reason-selection logic
+    (RejectedTarget.reasons) rather than re-deriving it here a second
+    time. `targets_by_id` only supplies display labels for targets
+    PlacementDecision refers to by id."""
+
+    def label(target_id: str) -> str:
+        target = targets_by_id.get(target_id)
+        return target.model if target is not None else target_id
+
+    lines = ["FORGEWAY PLACEMENT DECISION", "", "Workload:", f"  {workload.name}", ""]
+
+    lines += ["Recommended:"]
+    if decision.recommended_target_id:
+        lines.append(f"  {label(decision.recommended_target_id)}")
+    else:
+        lines.append("  None — no candidate cleared every requirement.")
+    lines.append("")
+
+    lines += ["Confidence:", f"  {_confidence_label(decision.confidence)}", ""]
+    lines += ["Why:", f"  {record.reasoning}", ""]
+
+    current = workload.current_placement
+    lines += [
+        "Current placement:",
+        f"  {label(current.target_id)} — ${current.cost_per_hr:.2f}/hr",
+        "",
+    ]
+
+    improvement = decision.improvement_vs_current_placement
+    if improvement is not None and improvement.cost_savings_pct is not None:
+        pct = improvement.cost_savings_pct
+        # Ranking picks the best weighted blend of cost/performance/headroom,
+        # not lowest cost alone — a recommendation costing *more* than the
+        # current placement (better performance/headroom instead) is a real,
+        # reachable outcome, not just a savings case.
+        if pct > 0:
+            direction = f"{pct:.1f}% lower cost"
+        elif pct < 0:
+            direction = f"{abs(pct):.1f}% higher cost"
+        else:
+            direction = "the same cost"
+        lines += [
+            "Estimated improvement:",
+            f"  {direction} vs. current placement "
+            f"(${improvement.current_cost_per_hr:.2f}/hr → ${improvement.recommended_cost_per_hr:.2f}/hr)",
+            "",
+        ]
+
+    lines += ["SLO status:", f"  {'MET' if record.slo_met else 'VIOLATED'}", ""]
+
+    lines.append("Evaluated:")
+    rejected_reasons = {r.target_id: r.reasons for r in decision.rejected_targets}
+    row_labels = {target_id: label(target_id) for target_id in decision.evaluated_targets}
+    # Computed from the actual labels being printed, not a fixed width —
+    # several real target names in this demo's own fixtures (e.g. "Jetson
+    # AGX Thor 128GB", "RTX 6000 Ada (lab bench, 2x)") already exceed any
+    # small fixed column width, which ran the status word straight into
+    # the label with no separating space at all.
+    column_width = max((len(l) for l in row_labels.values()), default=0) + 2
+    for target_id in decision.evaluated_targets:
+        row_label = row_labels[target_id]
+        if target_id == decision.recommended_target_id:
+            lines.append(f"  {row_label:<{column_width}}RECOMMENDED")
+        elif target_id in rejected_reasons:
+            reason = "; ".join(rejected_reasons[target_id]) or "not selected"
+            lines.append(f"  {row_label:<{column_width}}REJECTED — {reason}")
+        elif target_id in decision.feasible_targets:
+            lines.append(f"  {row_label:<{column_width}}FEASIBLE")
+        else:
+            lines.append(f"  {row_label:<{column_width}}—")
+    lines.append("")
+
+    if record.evidence:
+        lines.append("Critical evidence:")
+        for e in record.evidence:
+            lines.append(f"  {e.label:<32} {e.display_value:<20} {e.metric.provenance}")
+        lines.append("")
+
+    if discovery_note:
+        lines.append(discovery_note)
+        lines.append("")
+
+    lines.append("Run `forgeway analyze ... --json` for the full PlacementDecision record.")
+    return "\n".join(lines)
+
+
+def cmd_analyze(args: argparse.Namespace) -> int:
+    try:
+        workload = load_workload_yaml(Path(args.workload_path))
+        if args.policy:
+            policy = load_policy_yaml(Path(args.policy))
+            workload = workload.model_copy(update={"policy": policy})
+    except AnalyzeError as e:
+        print(f"forgeway analyze: {e}", file=sys.stderr)
+        return 1
+
+    # Step 2: fixture/reference data, and/or discovered local hardware.
+    targets = list(load_compute_targets())
+    targets_by_id = {t.id: t for t in targets}
+    discovery_note = None
+    if not args.skip_discovery:
+        try:
+            discovered = run_discovery()
+        except DiscoveryError:
+            discovery_note = "(No local hardware discovered — evaluated against the fixture catalog only.)"
+        else:
+            if discovered.id in targets_by_id:
+                discovery_note = (
+                    f"(Local hardware discovered: {discovered.model} — already present in the "
+                    f"fixture catalog as '{discovered.id}'; using the fixture entry.)"
+                )
+            else:
+                targets.append(discovered)
+                targets_by_id[discovered.id] = discovered
+                discovery_note = f"(Included locally discovered target: {discovered.model} [{discovered.id}].)"
+
+    # Steps 3-5: the same core engine the web app calls — app.engine.decision
+    # .run_decision() — gathers relevant PerformanceEvidence and returns a
+    # Recommendation; PlacementDecision.from_candidates() reframes its
+    # candidates as the vendor-neutral record this command returns.
+    record = run_decision(
+        workload,
+        record_id=f"analyze-{uuid.uuid4().hex[:12]}",
+        scenario=ScenarioParams(type=ScenarioType.normal, label="Normal — baseline, no scenario applied"),
+        effective_min_throughput=workload.slo.min_throughput_tokens_per_s,
+        targets=targets,
+    )
+    decision = PlacementDecision.from_candidates(workload, record.candidates)
+
+    if args.json:
+        print(decision.model_dump_json(indent=2))
+    else:
+        print(format_analyze_human(workload, record, decision, targets_by_id, discovery_note))
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="forgeway", description="Forgeway workload intelligence CLI.")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -247,6 +413,28 @@ def build_parser() -> argparse.ArgumentParser:
 
     runs_parser = subparsers.add_parser("runs", help="List locally stored benchmark runs.")
     runs_parser.set_defaults(func=cmd_runs)
+
+    analyze_parser = subparsers.add_parser(
+        "analyze", help="Run the placement decision engine against a YAML-defined workload."
+    )
+    analyze_parser.add_argument(
+        "workload_path", help="Path to an AIWorkload YAML file (see examples/workload.yaml)."
+    )
+    analyze_parser.add_argument(
+        "--policy",
+        default=None,
+        help="Path to an EnterprisePolicy YAML file overriding the workload's own policy for this run "
+        "(see examples/policy.yaml).",
+    )
+    analyze_parser.add_argument(
+        "--skip-discovery",
+        action="store_true",
+        help="Don't attempt local hardware discovery; evaluate against the fixture catalog only.",
+    )
+    analyze_parser.add_argument(
+        "--json", action="store_true", help="Emit the full PlacementDecision JSON record instead of text."
+    )
+    analyze_parser.set_defaults(func=cmd_analyze)
 
     return parser
 

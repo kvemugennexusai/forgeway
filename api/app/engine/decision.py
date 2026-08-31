@@ -1,8 +1,12 @@
 """Orchestrates one placement decision, in the exact order every step of the
 pipeline depends on the one before it:
 
- 1. Load workload.                          (caller — app/data/loader.py)
- 2. Load compute targets.                   (caller — app/data/loader.py)
+ 1. Load workload.                          (caller — app/data/loader.py, or a CLI-loaded YAML file)
+ 2. Load compute targets.                   (caller — app/data/loader.py by default; run_decision's
+                                             optional `targets` parameter lets a caller — e.g. the CLI's
+                                             `forgeway analyze` — supply its own list, such as fixtures
+                                             plus a locally discovered target, without duplicating any
+                                             of the steps below)
  3. Evaluate hard compatibility.             (app/core/engine/feasibility.py)
  4. Return explicit rejection reasons.       (CandidateEvaluation.rejection_reasons)
  5. For feasible targets, retrieve prediction. (app/core/engine/scoring.retrieve_prediction)
@@ -51,7 +55,7 @@ from app.benchmark.store import list_runs
 from app.core.engine.feasibility import evaluate_feasibility
 from app.core.engine.ranking import normalize_and_weight
 from app.core.engine.scoring import score_candidate, size_replicas
-from app.core.schemas import LATENCY_METRIC_KEY, THROUGHPUT_METRIC_KEY, PerformanceEvidence
+from app.core.schemas import LATENCY_METRIC_KEY, THROUGHPUT_METRIC_KEY, ComputeTarget, PerformanceEvidence
 from app.data.loader import load_compute_targets
 from app.engine.evidence_gateway import resolve_evidence
 from app.models import (
@@ -75,6 +79,7 @@ def _build_unmitigated_projection(
     prior: Optional[Recommendation],
     effective_min_throughput: float,
     benchmark_runs: list[PerformanceEvidence],
+    targets_by_id: dict[str, ComputeTarget],
 ) -> Optional[UnmitigatedProjection]:
     if prior is None or prior.recommended_target_id is None or prior.recommended is None:
         return None
@@ -86,7 +91,7 @@ def _build_unmitigated_projection(
     if evidence is None:
         return None
 
-    target = next((t for t in load_compute_targets() if t.id == target_id), None)
+    target = targets_by_id.get(target_id)
     if target is None:
         return None
 
@@ -133,6 +138,7 @@ def _greedy_split(
     capacity_overrides: dict[str, int],
     effective_min_confidence: float,
     benchmark_runs: list[PerformanceEvidence],
+    targets_by_id: dict[str, ComputeTarget],
 ) -> tuple[list[SplitAllocation], float]:
     # A split is still bound by the confidence gate: contributing a slice of
     # traffic to a target doesn't need it to clear the SLO alone, but it must
@@ -146,7 +152,6 @@ def _greedy_split(
         ),
         key=lambda c: c.score,  # type: ignore[arg-type,return-value]
     )
-    targets_by_id = {t.id: t for t in load_compute_targets()}
 
     remaining_required = required_throughput
     remaining_budget = workload.policy.budget_ceiling_per_hr
@@ -214,7 +219,15 @@ def run_decision(
     capacity_overrides: Optional[dict[str, int]] = None,
     objective_weights: Optional[ObjectiveWeights] = None,
     min_confidence_pct: Optional[float] = None,
+    targets: Optional[list[ComputeTarget]] = None,
 ) -> Recommendation:
+    """`targets` defaults to this demo's fixture catalog
+    (app/data/loader.py::load_compute_targets()) — every existing caller
+    (the web app's routers, scenarios.py) is unaffected. A caller that
+    needs a different or broader candidate pool — e.g. the CLI's
+    `forgeway analyze`, which can add a locally discovered target to the
+    fixture catalog — supplies its own list instead; nothing about the
+    11-step pipeline changes based on where that list came from."""
     capacity_overrides = capacity_overrides or {}
     effective_weights = objective_weights or workload.objective_weights
     effective_min_confidence = (
@@ -225,7 +238,7 @@ def run_decision(
     # test can vary either independently without touching the fixture.
     scoring_workload = workload.model_copy(update={"objective_weights": effective_weights})
 
-    targets = load_compute_targets()
+    targets = targets if targets is not None else load_compute_targets()
     targets_by_id = {t.id: t for t in targets}
     candidates: list[CandidateEvaluation] = []
     # Fetched once per decision, not once per target: every locally saved
@@ -305,6 +318,7 @@ def run_decision(
             capacity_overrides,
             effective_min_confidence,
             benchmark_runs,
+            targets_by_id,
         )
         achieved = effective_min_throughput - shortfall
         for c in candidates:
@@ -420,7 +434,9 @@ def run_decision(
 
     unmitigated = None
     if scenario.type.value == "demand_spike":
-        unmitigated = _build_unmitigated_projection(workload, prior, effective_min_throughput, benchmark_runs)
+        unmitigated = _build_unmitigated_projection(
+            workload, prior, effective_min_throughput, benchmark_runs, targets_by_id
+        )
 
     if recommended and recommended_target_id:
         t = targets_by_id[recommended_target_id]

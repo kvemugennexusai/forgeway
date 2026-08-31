@@ -1,0 +1,47 @@
+# An AIWorkload (forgeway/v0.1 — docs/schemas.md), for `forgeway analyze`:
+#
+#   forgeway analyze examples/workload.yaml
+#   forgeway analyze examples/workload.yaml --json
+#   forgeway analyze examples/workload.yaml --policy examples/policy.yaml
+#
+# This is the same workload — same id, same numbers — as the web demo's
+# flagship "wl-llama70b-rt" fixture (app/fixtures/workloads.json), not a
+# fabricated example: `forgeway analyze` against this file exercises the
+# exact same decision engine (app/engine/decision.py::run_decision) as the
+# web app's `/analyze` page for this workload, so the two are directly
+# comparable — proof the CLI and the web UI never diverge into separate
+# placement logic.
+schema_version: forgeway/v0.1
+id: wl-llama70b-rt
+name: "llama-3.1-70b-chat — realtime inference"
+model_family: "Llama 3.1 70B"
+model_params_billion: 70
+workload_class: realtime-inference
+precision: fp8
+weights_footprint_gb: 70
+kv_cache_overhead_gb: 8
+baseline_concurrency: 64
+slo:
+  p99_latency_ms: 450
+  min_throughput_tokens_per_s: 1800
+  availability_pct: 99.9
+policy:
+  allowed_vendors: [nvidia, amd, intel, aws]
+  denied_vendors: []
+  allowed_regions: [us-east-1, us-central-1, us-west-2, edge, on-prem]
+  budget_ceiling_per_hr: 25.00
+current_placement:
+  target_id: nvidia-h100-dc
+  replica_count: 2
+  measured_p99_latency_ms: 390
+  measured_throughput_tokens_per_s_per_replica: 1050
+  cost_per_hr: 8.20
+  provenance: MEASURED
+  source: "Production telemetry, trailing 24h window"
+objective_weights:
+  cost: 0.5
+  performance: 0.3
+  headroom: 0.2
+min_confidence_pct: 70
+tokens_per_request: 90
+reanalyze: true

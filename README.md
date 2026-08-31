@@ -266,6 +266,55 @@ caveats.
 forgeway bench --model meta-llama/Llama-3.1-8B-Instruct --input-tokens 512 --output-tokens 128 --concurrency 1
 ```
 
+## CLI: placement analysis
+
+`forgeway analyze` runs **the exact same decision engine the web app uses**
+(`app/engine/decision.py::run_decision` — steps 1-11, unchanged: evaluate hard compatibility,
+reject infeasible targets, evaluate SLOs, score feasible targets, rank them, explain the
+recommendation) against a workload defined in a YAML file, and returns a vendor-neutral
+`PlacementDecision` (`docs/schemas.md`). See [`docs/decision-engine.md`](docs/decision-engine.md)
+for how evidence selection works; nothing about it changes when the caller is the CLI instead of
+an HTTP request — that's the whole point.
+
+```bash
+forgeway analyze examples/workload.yaml
+forgeway analyze examples/workload.yaml --json                          # full PlacementDecision JSON
+forgeway analyze examples/workload.yaml --policy examples/policy.yaml   # override its enterprise policy
+```
+
+`examples/workload.yaml` is the demo's own flagship `wl-llama70b-rt` fixture, not a fabricated
+example — comparing its output to the web app's own `/analyze` page for the same workload is a
+direct, literal proof the CLI and the web UI never diverge into separate placement logic.
+`examples/policy.yaml` is a stricter policy (NVIDIA-only, single-region) that flips the
+recommendation from AMD's MI300X to NVIDIA's H100 — see the file's own comments for why.
+
+By default, `analyze` evaluates the fixture catalog **and** (best-effort) whatever
+`forgeway discover` finds on the local machine — pass `--skip-discovery` to use the fixture
+catalog only. A locally saved `forgeway bench` run for a matching workload/target is picked up
+the same way any other evidence is (`docs/decision-engine.md`) — though, as that doc explains,
+`forgeway bench`'s own metric keys don't yet match what the engine looks for, so a real run
+doesn't currently change an existing demo workload's recommendation.
+
+## End-to-end CLI flow
+
+The three commands above form one coherent pipeline, each step's output usable by the next:
+
+```bash
+forgeway discover                                                        # 1. what hardware is here?
+forgeway bench --model meta-llama/Llama-3.1-8B-Instruct                  # 2. how does it perform?
+forgeway analyze examples/workload.yaml                                  # 3. where should this workload run?
+forgeway runs                                                            # (list every benchmark run saved along the way)
+```
+
+None of this touches the web demo's in-memory store or UI. `forgeway analyze` does read the same
+fixture catalog the web app reads (`app/data/loader.py`) as its base target list — that's what
+makes `examples/workload.yaml` directly comparable to the web app's own `/analyze` page — but it
+never writes to the demo's store, and nothing it does is visible from the web UI. Requires the
+full backend setup above,
+plus vLLM and a CUDA GPU for step 2 specifically (`docs/benchmarking.md`); steps 1 and 3 work on
+any machine — step 1 reports "no supported accelerator" cleanly without one, and step 3 falls
+back to the fixture catalog alone.
+
 ---
 
 ## What's implemented vs. not
@@ -280,17 +329,20 @@ AFTER comparison and an explicit change explanation; every route in the product 
 fixture-driven; one real hardware discovery adapter (`forgeway discover`, local NVIDIA GPUs via
 `nvidia-smi` — see [`docs/discovery.md`](docs/discovery.md)) and one real benchmark path
 (`forgeway bench`, `vllm bench latency`, `provenance: MEASURED` — see
-[`docs/benchmarking.md`](docs/benchmarking.md)); the placement engine's evidence path is now
+[`docs/benchmarking.md`](docs/benchmarking.md)); the placement engine's evidence path is
 unified across fixture data and any real, locally saved `forgeway bench` run for a matching
 workload/target (`MEASURED > PUBLISHED > MODELED` — see
-[`docs/decision-engine.md`](docs/decision-engine.md)).
+[`docs/decision-engine.md`](docs/decision-engine.md)); `forgeway analyze` exposes that same
+engine directly (`app/engine/decision.py::run_decision`, unchanged) against a YAML-defined
+workload, and can add a locally discovered target to the fixture catalog it scores against.
 
 **Not implemented (by design, this build):** the web demo above still runs entirely on
 fixtures — no cloud API calls, no live telemetry feeding it, no Kubernetes; `forgeway discover`
-is standalone (not wired into placement decisions at all); `forgeway bench`'s saved runs *are*
-wired into the decision engine's evidence path, but its own metric key names don't yet match
-what the engine looks for, so a real run doesn't currently affect an existing demo workload's
-recommendation — see `docs/decision-engine.md`'s "what's out of scope" section.
+and `forgeway bench` are not wired into the web UI, only into the CLI's own `forgeway analyze`.
+`forgeway bench`'s saved runs *are* wired into the decision engine's evidence path, but its own
+metric key names don't yet match what the engine looks for, so a real run doesn't currently
+affect an existing demo workload's recommendation — see `docs/decision-engine.md`'s "what's out
+of scope" section.
 No persistence beyond an in-memory store (restart the API and every simulated recommendation is
 gone; the baseline Insight reseeds). No custom workload authoring in `/analyze` — only the
 fixture workload library. No LLM in the decision path — the deterministic engine decides;

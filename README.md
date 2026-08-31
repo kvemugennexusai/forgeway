@@ -297,6 +297,29 @@ Run the engine tests:
 cd api && source .venv/bin/activate && pytest tests/ -v
 ```
 
+### Testing from another device on your LAN
+
+By default the backend only binds to `127.0.0.1` and the frontend points at `localhost` — neither
+is reachable from another device. To test from a phone, tablet, or another computer on the same
+network as the host:
+
+```bash
+# find the host's LAN IP first, e.g. on macOS:
+ipconfig getifaddr en0
+
+# backend — bind to all interfaces, not just 127.0.0.1
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+
+# frontend — point at the host's LAN IP instead of localhost (gitignored, won't affect anyone else)
+echo "NEXT_PUBLIC_API_BASE_URL=http://<host-LAN-IP>:8000" > web/.env.local
+cd web && npm run dev
+```
+
+`npm run dev` prints a `Network:` URL — open that (not `localhost`) on the other devices. CORS
+already allows private-LAN origins (`192.168.x.x`, `10.x.x.x`, `172.16-31.x.x`, any port,
+alongside `localhost`) as well as `http`-only, never a public/internet-routable origin — see
+`api/app/main.py`'s `CORSMiddleware` config and `api/tests/test_cors.py`.
+
 ### The demo flow
 
 1. **`/`** — the estate dashboard. Read the KPI row, then the Forgeway Insight card: the

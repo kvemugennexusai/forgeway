@@ -62,8 +62,12 @@ app.add_middleware(
     # use by something else, which is common enough that hardcoding one
     # port here would otherwise break /analyze, /import, and scenarios for
     # anyone in that situation while the read-only GET routes kept working.
-    # Still local-only: no scheme but http, no host but localhost/127.0.0.1.
-    allow_origin_regex=r"http://(localhost|127\.0\.0\.1):\d+",
+    # Also matches RFC1918 private-network IPs (192.168.x.x, 10.x.x.x,
+    # 172.16-31.x.x) so the web demo works when accessed from another
+    # device on the same LAN as the host running `uvicorn --host 0.0.0.0`
+    # (see docs/architecture.md) — still http-only, still private-range-only,
+    # never a public/internet-routable origin.
+    allow_origin_regex=r"http://(localhost|127\.0\.0\.1|192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+|172\.(1[6-9]|2\d|3[01])\.\d+\.\d+):\d+",
     allow_methods=["*"],
     allow_headers=["*"],
 )

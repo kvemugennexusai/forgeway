@@ -66,6 +66,15 @@ own PR with its own pass over the existing code, not bundled into an
 unrelated change, since retrofitting one across the whole codebase is a
 non-trivial amount of churn on its own.
 
+**Backend dependencies have no lockfile.** `api/pyproject.toml` declares
+open-ended lower bounds (`fastapi>=0.115`, `pydantic>=2.9`, etc.) with no
+committed `pip freeze`/`pip-compile` snapshot — unlike `web/package-lock.json`,
+which is committed. This has been verified to install and pass the full
+test suite against `fastapi==0.141.1`, `pydantic==2.13.5`, `uvicorn==0.52.4`,
+`pyyaml==6.0.3`, `pytest==9.1.1` on Python 3.14; if a fresh install ever
+breaks against newer releases of these, that's a real regression worth a
+lockfile or upper bounds, not an environment problem on your end.
+
 **Don't run `npm run build` while `npm run dev` is also running** against
 the same `web/` checkout — both write to `.next/` and a build can corrupt
 the dev server's cache mid-session (you'll see a

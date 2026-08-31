@@ -57,7 +57,13 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    # Matches any localhost port, not just 3000 — `npm run dev` silently
+    # picks the next free port (3001, 3002, ...) when 3000 is already in
+    # use by something else, which is common enough that hardcoding one
+    # port here would otherwise break /analyze, /import, and scenarios for
+    # anyone in that situation while the read-only GET routes kept working.
+    # Still local-only: no scheme but http, no host but localhost/127.0.0.1.
+    allow_origin_regex=r"http://(localhost|127\.0\.0\.1):\d+",
     allow_methods=["*"],
     allow_headers=["*"],
 )

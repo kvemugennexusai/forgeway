@@ -55,7 +55,17 @@ real or fixture — the discovery/benchmark *adapters* are what's currently NVID
   Forgeway does not schedule, provision, or migrate anything.
 - **Discovery and benchmarking are real, but narrow**: one vendor (NVIDIA), one benchmark path
   (`vllm bench latency`). Real output, limited scope — see the docs linked above for exactly
-  what's measured vs. estimated.
+  what's measured vs. estimated. Notably, that one benchmark path is **offline latency only**:
+  it does not measure time-to-first-token or true concurrent-request serving throughput — the
+  two numbers that matter most for a `realtime-inference` SLO, which is exactly the workload
+  class this demo's flagship recommendation is about. See
+  [`docs/benchmarking.md`](docs/benchmarking.md#why-vllm-bench-latency-and-what-it-does-and-doesnt-measure)
+  before treating a `forgeway bench` number as representative of production serving latency.
+- **Steps that require real NVIDIA hardware can't be verified on most machines.** `forgeway
+  discover`, `forgeway bench`, and the "hardware found" half of `forgeway analyze` all fail
+  cleanly (not silently) without an NVIDIA GPU — which is most contributors' and evaluators'
+  machines. `forgeway analyze` against the fixture catalog, and every web demo feature except
+  actually running `forgeway discover`/`forgeway bench` yourself, work on any machine.
 - **Scenario simulation** (demand spike, capacity loss, policy changes) recomputes the real
   engine against a hypothetical input — it's a real re-run, not a live projection from telemetry.
 - **`/import`** stores uploaded hardware/evidence in browser `localStorage` only — no server-side

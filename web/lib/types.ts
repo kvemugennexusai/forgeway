@@ -289,3 +289,33 @@ export interface EstateSummary {
   vendor_breakdown: VendorBreakdown[];
   insights: InsightCard[];
 }
+
+/** Mirrors api/app/core/schemas/performance_evidence.py — see
+ * docs/importing-results.md for the "Import benchmark result" flow this
+ * type supports. */
+export interface PerformanceEvidence {
+  schema_version: "forgeway/v0.1";
+  compute_target_id: string;
+  workload_id: string;
+  configuration: string | null;
+  metrics: Record<string, Metric>;
+  provenance: Provenance;
+  confidence: number;
+  source: string;
+  timestamp: string | null;
+  forgeway_version: string;
+  benchmark_run_id: string | null;
+}
+
+/** Sent with an /api/analyze request, never persisted server-side — the
+ * browser (lib/imported-storage.ts) is the only place this data lives
+ * between requests. Kept strictly additive to the reference fixture
+ * catalog; the backend rejects an imported target id that collides with
+ * one already in that catalog rather than silently merging them. */
+export interface AnalyzeRequestBody {
+  workload_id: string;
+  objective_weights?: ObjectiveWeights;
+  min_confidence_pct?: number;
+  imported_targets?: ComputeTarget[];
+  imported_evidence?: PerformanceEvidence[];
+}

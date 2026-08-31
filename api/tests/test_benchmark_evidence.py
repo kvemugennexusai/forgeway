@@ -6,7 +6,7 @@ from __future__ import annotations
 from app.benchmark.evidence import build_performance_evidence
 from app.benchmark.gpu_sampler import GpuSample
 from app.benchmark.parser import ParsedLatencyResult
-from app.core.schemas import ComputeTarget, Metric
+from app.core.schemas import LATENCY_METRIC_KEY, THROUGHPUT_METRIC_KEY, ComputeTarget, Metric
 from app.core.schemas.v0_1 import SCHEMA_VERSION
 
 
@@ -162,3 +162,103 @@ def test_evidence_round_trips_through_json():
     from app.core.schemas.v0_1 import PerformanceEvidence
 
     assert PerformanceEvidence.model_validate_json(evidence.model_dump_json()) == evidence
+
+
+# --------------------------------------------------------------------------
+# Canonical key aliasing — the fix that lets a real forgeway bench run
+# actually be picked up by app.core.engine.evidence_selection.select_evidence
+# (docs/decision-engine.md, docs/importing-results.md).
+# --------------------------------------------------------------------------
+
+
+def test_throughput_alias_is_always_present():
+    target = _compute_target()
+    parsed = ParsedLatencyResult(avg_latency_s=2.0, percentiles_s={})
+    evidence = build_performance_evidence(
+        compute_target=target, model="m", input_tokens=128, output_tokens=128, concurrency=1,
+        parsed=parsed, gpu_samples=[], run_id="r",
+    )
+    assert THROUGHPUT_METRIC_KEY in evidence.metrics
+    assert evidence.metrics[THROUGHPUT_METRIC_KEY] == evidence.metrics["output_token_throughput_tokens_per_s"]
+
+
+def test_latency_alias_present_when_p99_percentile_captured():
+    target = _compute_target()
+    parsed = ParsedLatencyResult(avg_latency_s=1.0, percentiles_s={"50": 0.9, "99": 1.3})
+    evidence = build_performance_evidence(
+        compute_target=target, model="m", input_tokens=128, output_tokens=128, concurrency=1,
+        parsed=parsed, gpu_samples=[], run_id="r",
+    )
+    assert LATENCY_METRIC_KEY in evidence.metrics
+    assert evidence.metrics[LATENCY_METRIC_KEY] == evidence.metrics["p99_latency_ms"]
+    assert evidence.metrics[LATENCY_METRIC_KEY].value == 1300.0
+
+
+def test_latency_alias_absent_when_no_p99_captured():
+    """The important negative case: end_to_end_latency_ms (an average) must
+    never be aliased as the canonical P99 key — an evidence record without
+    a real P99 percentile is honestly incomplete for scoring, not silently
+    patched with a misrepresented statistic."""
+    target = _compute_target()
+    parsed = ParsedLatencyResult(avg_latency_s=1.0, percentiles_s={})  # no percentiles at all
+    evidence = build_performance_evidence(
+        compute_target=target, model="m", input_tokens=128, output_tokens=128, concurrency=1,
+        parsed=parsed, gpu_samples=[], run_id="r",
+    )
+    assert LATENCY_METRIC_KEY not in evidence.metrics
+    assert THROUGHPUT_METRIC_KEY in evidence.metrics  # throughput is unaffected
+
+
+def test_workload_id_defaults_to_model_when_not_overridden():
+    """Back-compat: omitting workload_id preserves the original behavior —
+    never selectable against a real workload (a HuggingFace model string
+    never equals a Forgeway workload id), but also never collides with or
+    overrides one."""
+    target = _compute_target()
+    parsed = ParsedLatencyResult(avg_latency_s=1.0, percentiles_s={})
+    evidence = build_performance_evidence(
+        compute_target=target, model="meta-llama/Llama-3.1-8B-Instruct", input_tokens=10,
+        output_tokens=10, concurrency=1, parsed=parsed, gpu_samples=[], run_id="r",
+    )
+    assert evidence.workload_id == "meta-llama/Llama-3.1-8B-Instruct"
+
+
+def test_workload_id_can_be_overridden_independently_of_model():
+    """docs/importing-results.md: a caller that knows the benchmarked model
+    genuinely corresponds to an existing Forgeway workload (same
+    family/parameter count) can tag the evidence with that workload's real
+    id, decoupled from the --model string used to actually run the
+    benchmark — this is the fix that lets forgeway bench's output ever
+    become selectable for a real workload at all."""
+    target = _compute_target()
+    parsed = ParsedLatencyResult(avg_latency_s=1.0, percentiles_s={"50": 0.9, "99": 1.3})
+    evidence = build_performance_evidence(
+        compute_target=target, model="meta-llama/Llama-3.1-70B-Instruct", workload_id="wl-llama70b-rt",
+        input_tokens=10, output_tokens=10, concurrency=1, parsed=parsed, gpu_samples=[], run_id="r",
+    )
+    assert evidence.workload_id == "wl-llama70b-rt"
+    # the model string used for the actual benchmark run is still traceable
+    # via each metric's source, even though it's no longer the workload_id
+    assert "meta-llama/Llama-3.1-70B-Instruct" in evidence.metrics["end_to_end_latency_ms"].source
+
+
+def test_evidence_with_both_aliases_is_selectable_by_the_engine():
+    """End-to-end proof: a real forgeway bench run (via the real
+    build_performance_evidence, not a hand-built stand-in) now clears
+    app.core.engine.evidence_selection.select_evidence's comparability
+    gate — closing the gap tests/test_decision_evidence_integration.py::
+    test_a_real_forgeway_bench_run_is_not_selected_yet documented as a
+    known limitation."""
+    from app.core.engine.evidence_selection import select_evidence
+
+    target = _compute_target()
+    parsed = ParsedLatencyResult(avg_latency_s=0.5, percentiles_s={"50": 0.4, "99": 0.6})
+    evidence = build_performance_evidence(
+        compute_target=target, model="wl-test", input_tokens=128, output_tokens=128, concurrency=1,
+        parsed=parsed, gpu_samples=[], run_id="bench-real",
+    )
+
+    chosen = select_evidence([evidence], required_metrics=(LATENCY_METRIC_KEY, THROUGHPUT_METRIC_KEY))
+
+    assert chosen is evidence
+    assert chosen.provenance == "MEASURED"

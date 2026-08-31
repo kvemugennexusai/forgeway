@@ -16,7 +16,7 @@ from app.core.version import FORGEWAY_VERSION
 from app.data.loader import load_workloads
 from app.engine.decision import run_decision
 from app.models import ScenarioParams, ScenarioType
-from app.routers import analyze, estate, infrastructure, recommendations, scenarios, workloads
+from app.routers import analyze, estate, imports, infrastructure, recommendations, scenarios, workloads
 from app.state import store
 
 
@@ -68,6 +68,7 @@ app.include_router(analyze.router)
 app.include_router(recommendations.router)
 app.include_router(estate.router)
 app.include_router(scenarios.router)
+app.include_router(imports.router)
 
 
 @app.get("/api/health")

@@ -1,0 +1,33 @@
+{
+  "schema_version": "forgeway/v0.1",
+  "id": "local-nvidia-gpu-box-01",
+  "vendor": "nvidia",
+  "model": "NVIDIA RTX 6000 Ada Generation",
+  "tier": "lab",
+  "location": "local (gpu-box-01)",
+  "architecture": "ada-lovelace",
+  "memory_gb_per_device": 48.0,
+  "interconnect": "not probed",
+  "supported_precisions": [],
+  "capacity_units_total": 1,
+  "capacity_units_allocated": 0,
+  "runtime_support": null,
+  "price_per_hr_per_unit": {
+    "value": 0.0,
+    "confidence": 0.0,
+    "provenance": "MODELED",
+    "range_low": null,
+    "range_high": null,
+    "source": "No pricing available for locally discovered hardware.",
+    "evidence_reference": null
+  },
+  "status": "healthy",
+  "unsupported_workload_classes": [],
+  "notes": "Discovered via nvidia-smi on gpu-box-01 (Linux-6.8.0-x86_64). Driver version: 550.90.07. CUDA version: 12.4. Free device memory — GPU 0: 44.1/48.0 GB free. price_per_hr_per_unit is a placeholder — there is no real hourly cost for locally discovered hardware; set it manually before using this target in cost-based placement decisions. supported_precisions is not auto-detected in this adapter — set it manually based on this GPU's known capabilities.",
+  "observed_gpu_utilization_pct": 8.0,
+  "observed_memory_utilization_pct": 8.1,
+  "discovered_at": "2026-08-30T14:03:11.482113Z",
+  "free_capacity_units": 1,
+  "utilization_pct": 0.0,
+  "accelerator_count": 1
+}

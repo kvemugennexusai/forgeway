@@ -16,6 +16,18 @@ these objects — `api/tests/test_v0_1_schemas.py` proves the same pipeline
 this file was generated from (`_ranked_candidates()` + `from_candidates()`)
 produces this exact recommendation.
 
+Two more, illustrating the web import flow
+([`docs/importing-results.md`](../docs/importing-results.md)) rather than
+this repo's own fixtures — also real, generated objects, not hand-written:
+
+| File | Schema | Source |
+|---|---|---|
+| `discovered-target.json` | `ComputeTarget` | an illustrative `forgeway discover --json` result for a local NVIDIA RTX 6000 Ada box, built by constructing a real `ComputeTarget` and calling `.model_dump_json()` |
+| `benchmark-result.json` | `PerformanceEvidence` | the real `build_performance_evidence()` function (`app/benchmark/evidence.py`) run against a parsed `vllm bench latency` result for `meta-llama/Llama-3.1-70B-Instruct` on that target, tagged with the real `wl-llama70b-rt` workload id via the `--workload-id` mechanism (`docs/importing-results.md`) — an honest pairing, since the benchmarked model actually matches that workload's family/parameter count. Includes both P50/P99 percentiles so the canonical latency alias is present. |
+
+Both validate successfully against the live `/api/import/*` endpoints —
+they're meant to be uploaded on `/import` as a working end-to-end example.
+
 **Regenerating:** these files are not hand-kept — if the demo's fixtures or
 `app.core.engine` change, rerun the committed generator (with the `api/`
 virtualenv active):

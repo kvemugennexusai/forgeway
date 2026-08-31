@@ -179,16 +179,16 @@ one came from.
 
 ## What's out of scope for this pass
 
-- No HTTP route serves `PerformanceEvidence` or `PlacementDecision` as a
-  response body today. `PerformanceEvidence` *is* now consumed internally
-  by the placement engine (`docs/decision-engine.md`) — every
-  `/api/analyze` call selects among `PerformanceEvidence` candidates
-  under the hood — but nothing exposes the record itself over HTTP.
-  `PlacementDecision` is a real, live output too, just not over HTTP: the
-  CLI's `forgeway analyze --json` emits it directly (README.md's
-  end-to-end CLI flow). Serving either over HTTP is a reasonable next
-  step once there's an actual second consumer that needs the versioned
-  shape over the wire.
+- `PerformanceEvidence` and `ComputeTarget` are now validated as HTTP
+  request/response bodies (`POST /api/import/performance-evidence`,
+  `POST /api/import/compute-target` — `app/routers/imports.py`,
+  [`docs/importing-results.md`](importing-results.md)) — a stateless
+  echo-back-if-valid pair used by the web import flow, not a stored
+  resource. No route yet serves `PlacementDecision` over HTTP: the CLI's
+  `forgeway analyze --json` emits it directly (README.md's end-to-end CLI
+  flow), and nothing over HTTP returns that shape today. Adding an HTTP
+  route for it is a reasonable next step once there's an actual second
+  consumer that needs the versioned shape over the wire.
 - `runtime_support` is real and typed but `None` for every current fixture —
   there's no structured runtime/framework data to populate it with yet.
 - Split-placement decisions aren't representable in `PlacementDecision`

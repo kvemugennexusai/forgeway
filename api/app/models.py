@@ -31,6 +31,7 @@ from app.core.schemas import (
     Metric,
     NormalizedScores,
     ObjectiveWeights,
+    PerformanceEvidence,
     PerformanceProfile,
     PredictedOutcome,
     Prediction,
@@ -52,6 +53,7 @@ __all__ = [
     "CurrentPlacement",
     "Workload",
     "PerformanceProfile",
+    "PerformanceEvidence",
     "FeasibilityCheck",
     "Prediction",
     "PredictedOutcome",
@@ -200,6 +202,14 @@ class AnalyzeRequest(BaseModel):
     workload_id: str
     objective_weights: Optional[ObjectiveWeights] = None
     min_confidence_pct: Optional[float] = None
+    # "Import benchmark result" (docs/importing-results.md): a browser-local
+    # set of targets/evidence the user uploaded, sent with the request
+    # rather than stored server-side. Kept strictly additive to the
+    # fixture catalog — analyze.py rejects an imported target whose id
+    # collides with a reference one, so imported data is never silently
+    # merged into the demo's own fixtures.
+    imported_targets: list[ComputeTarget] = Field(default_factory=list)
+    imported_evidence: list[PerformanceEvidence] = Field(default_factory=list)
 
 
 # --------------------------------------------------------------------------

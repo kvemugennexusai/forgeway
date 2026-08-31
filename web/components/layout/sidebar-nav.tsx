@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Server, ScanSearch, ListChecks, Boxes } from "lucide-react";
+import { LayoutDashboard, Server, ScanSearch, ListChecks, Boxes, UploadCloud } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
@@ -11,6 +11,7 @@ const NAV_ITEMS = [
   { href: "/infrastructure", label: "Infrastructure", icon: Server },
   { href: "/analyze", label: "Analyze workload", icon: ScanSearch },
   { href: "/workloads", label: "Workloads", icon: ListChecks },
+  { href: "/import", label: "Import result", icon: UploadCloud },
 ];
 
 export function SidebarNav() {

@@ -199,42 +199,77 @@ def test_recommendation_changes_when_stronger_measured_evidence_is_introduced(tm
 
 
 # --------------------------------------------------------------------------
-# The documented disconnect (docs/decision-engine.md / docs/benchmarking.md):
-# today's real `forgeway bench` output is not selected, because its metric
-# keys don't match what the engine looks for. This is asserted in the docs;
-# this test is what actually keeps that assertion honest.
+# The one remaining, deliberate gap (docs/decision-engine.md /
+# docs/benchmarking.md): a real `forgeway bench` run tagged with a genuinely
+# matching --workload-id (docs/importing-results.md) is a real, comparable
+# candidate — but only when a real P99 percentile was actually captured.
+# Without one, it's still gathered as a candidate but honestly excluded from
+# selection, never patched with a misrepresented average-as-P99 figure.
 # --------------------------------------------------------------------------
 
 
-def test_a_real_forgeway_bench_run_is_not_selected_yet(tmp_path, monkeypatch):
+def test_a_real_forgeway_bench_run_without_percentiles_is_not_selected(tmp_path, monkeypatch):
     """Uses the real app.benchmark.evidence.build_performance_evidence() —
     the exact function `forgeway bench` calls — not a hand-built stand-in.
-    Its output becomes a *candidate* (gather_evidence_candidates finds it,
-    since workload_id/compute_target_id match), but select_evidence must
-    not choose it, because it doesn't carry the canonical
-    p99_latency_ms_per_replica / throughput_tokens_per_s_per_replica keys
-    the engine requires — only forgeway bench's own, differently-named
-    metrics (end_to_end_latency_ms, etc.).
+    Without a captured P99 percentile, its output becomes a *candidate*
+    (gather_evidence_candidates finds it, since workload_id/
+    compute_target_id match), but select_evidence must not choose it: the
+    canonical LATENCY_METRIC_KEY is never aliased from end_to_end_latency_ms
+    (an average, not a P99) — see app/benchmark/evidence.py's module
+    docstring. Throughput *is* aliased unconditionally (a plain arithmetic
+    derivation, not a statistic that could be misrepresented), so it alone
+    isn't enough to clear the comparability gate.
     """
     monkeypatch.setenv("FORGEWAY_BENCH_DIR", str(tmp_path))
     target = next(t for t in load_compute_targets() if t.id == "amd-mi300x")
 
     real_bench_output = build_performance_evidence(
         compute_target=target,
-        model="wl-llama70b-rt",  # pretend this happened to match a real fixture workload id
+        model="meta-llama/Llama-3.1-70B-Instruct",  # a model that genuinely matches this workload
+        workload_id="wl-llama70b-rt",  # so tagging it with the real workload id is honest, not fabricated
         input_tokens=512,
         output_tokens=128,
         concurrency=1,
-        parsed=ParsedLatencyResult(avg_latency_s=0.1, percentiles_s={}),
+        parsed=ParsedLatencyResult(avg_latency_s=0.1, percentiles_s={}),  # no percentiles captured
         gpu_samples=[],
-        run_id="bench-real-shape",
+        run_id="bench-real-shape-no-percentiles",
     )
     assert LATENCY_METRIC_KEY not in real_bench_output.metrics  # confirms this is really today's shape
-    assert THROUGHPUT_METRIC_KEY not in real_bench_output.metrics
+    assert THROUGHPUT_METRIC_KEY in real_bench_output.metrics  # throughput alone is unconditional
     save_run(real_bench_output)
 
     candidates = gather_evidence_candidates("wl-llama70b-rt", "amd-mi300x", benchmark_runs=list_runs())
-    assert any(c.benchmark_run_id == "bench-real-shape" for c in candidates)  # it IS a candidate
+    assert any(c.benchmark_run_id == "bench-real-shape-no-percentiles" for c in candidates)  # it IS a candidate
 
     chosen = select_evidence(candidates, required_metrics=(LATENCY_METRIC_KEY, THROUGHPUT_METRIC_KEY))
-    assert chosen is None or chosen.benchmark_run_id != "bench-real-shape"  # but never the one selected
+    assert chosen is None or chosen.benchmark_run_id != "bench-real-shape-no-percentiles"
+
+
+def test_a_real_forgeway_bench_run_with_percentiles_is_now_selected(tmp_path, monkeypatch):
+    """The gap the test above documents is specifically about missing
+    percentile data — when `vllm bench latency --percentiles 50,99`
+    (the default) actually reports a P99, a real forgeway bench run is
+    selectable by the engine like any other MEASURED evidence."""
+    monkeypatch.setenv("FORGEWAY_BENCH_DIR", str(tmp_path))
+    target = next(t for t in load_compute_targets() if t.id == "amd-mi300x")
+
+    real_bench_output = build_performance_evidence(
+        compute_target=target,
+        model="meta-llama/Llama-3.1-70B-Instruct",
+        workload_id="wl-llama70b-rt",
+        input_tokens=512,
+        output_tokens=128,
+        concurrency=1,
+        parsed=ParsedLatencyResult(avg_latency_s=0.1, percentiles_s={"50": 0.09, "99": 0.12}),
+        gpu_samples=[],
+        run_id="bench-real-shape-with-percentiles",
+    )
+    assert LATENCY_METRIC_KEY in real_bench_output.metrics
+    save_run(real_bench_output)
+
+    candidates = gather_evidence_candidates("wl-llama70b-rt", "amd-mi300x", benchmark_runs=list_runs())
+    chosen = select_evidence(candidates, required_metrics=(LATENCY_METRIC_KEY, THROUGHPUT_METRIC_KEY))
+
+    assert chosen is not None
+    assert chosen.benchmark_run_id == "bench-real-shape-with-percentiles"
+    assert chosen.provenance == "MEASURED"

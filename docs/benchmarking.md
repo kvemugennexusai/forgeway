@@ -23,6 +23,13 @@ $ forgeway bench \
 - **Model:** any model `vllm bench latency --model <id>` can load, but this
   path is built and prioritized for
   **`meta-llama/Llama-3.1-8B-Instruct`**, as scoped for this milestone.
+- **Workload id:** the saved evidence's `workload_id` defaults to `--model`
+  (never a real Forgeway workload id, so never selectable by the placement
+  engine for any workload — but also never colliding with one). Pass
+  `--workload-id <id>` to tag the evidence with a real, existing workload
+  id instead — only honest when `--model` actually corresponds to that
+  workload (same family/parameter count). See
+  [`docs/importing-results.md`](importing-results.md#tagging-evidence-with-a-real-workload-id).
 
 This is deliberately **one benchmark path**, not a generic framework — see
 `api/app/benchmark/__init__.py`. Adding AMD, another runtime, or a second
@@ -151,16 +158,19 @@ Override the directory with the `FORGEWAY_BENCH_DIR` environment variable.
 - **Single-node, single-GPU only.** `--device-index` selects which GPU to
   sample telemetry from and matches what `--batch-size` runs on, but there
   is no multi-GPU tensor-parallel orchestration here.
-- **A saved run's metric keys don't yet match what the placement engine
-  looks for.** `forgeway bench` saves `end_to_end_latency_ms`,
-  `output_token_throughput_tokens_per_s`, etc.; the decision engine's
-  evidence selection (`docs/decision-engine.md`) looks for
-  `p99_latency_ms_per_replica` / `throughput_tokens_per_s_per_replica`.
-  The engine *is* wired to read any real, locally saved benchmark run for
-  a matching workload/target — but a run saved by this CLI today won't be
-  picked up by it, since aliasing an average latency to a P99 figure
-  would assert a statistical equivalence that isn't actually true. See
-  `docs/decision-engine.md`'s "what's out of scope" section.
+- **The engine's canonical metric keys are aliased conditionally, not
+  always.** `forgeway bench` saves its own descriptive keys
+  (`end_to_end_latency_ms`, `output_token_throughput_tokens_per_s`, etc.)
+  *and* the decision engine's canonical keys
+  (`p99_latency_ms_per_replica` / `throughput_tokens_per_s_per_replica` —
+  see `docs/decision-engine.md`). Throughput is always aliased (it's
+  arithmetically derived either way); the P99 latency alias is only added
+  when a real P99 percentile was actually captured (`--percentiles`
+  including `99`) — an average latency is never relabeled as a P99
+  figure, since that would assert a statistical equivalence that isn't
+  true. A run without a captured P99 still saves and imports correctly; it
+  just isn't comparable evidence for the engine yet. See
+  `docs/importing-results.md` for how this feeds the web import flow.
 
 ## Reproducibility caveats
 

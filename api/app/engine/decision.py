@@ -220,6 +220,7 @@ def run_decision(
     objective_weights: Optional[ObjectiveWeights] = None,
     min_confidence_pct: Optional[float] = None,
     targets: Optional[list[ComputeTarget]] = None,
+    imported_evidence: Optional[list[PerformanceEvidence]] = None,
 ) -> Recommendation:
     """`targets` defaults to this demo's fixture catalog
     (app/data/loader.py::load_compute_targets()) — every existing caller
@@ -227,7 +228,16 @@ def run_decision(
     needs a different or broader candidate pool — e.g. the CLI's
     `forgeway analyze`, which can add a locally discovered target to the
     fixture catalog — supplies its own list instead; nothing about the
-    11-step pipeline changes based on where that list came from."""
+    11-step pipeline changes based on where that list came from.
+
+    `imported_evidence` is additional PerformanceEvidence to consider
+    alongside this demo's fixtures and any server-local `forgeway bench`
+    runs — e.g. a record a user uploaded through the web UI's "Import
+    benchmark result" flow (docs/importing-results.md). It's merged into
+    the same evidence-gathering pool as `benchmark_runs` below, not stored
+    or persisted anywhere by this function — the caller (the web import
+    route) owns keeping it around (browser-local storage) between
+    requests, matching "no server-side persistence" for this feature."""
     capacity_overrides = capacity_overrides or {}
     effective_weights = objective_weights or workload.objective_weights
     effective_min_confidence = (
@@ -242,11 +252,12 @@ def run_decision(
     targets_by_id = {t.id: t for t in targets}
     candidates: list[CandidateEvaluation] = []
     # Fetched once per decision, not once per target: every locally saved
-    # `forgeway bench` run becomes a scoring candidate wherever its
-    # workload_id/compute_target_id match (app.engine.evidence_gateway) —
-    # re-reading that directory from disk for each of the estate's targets
-    # would be needless, repeated I/O for what's typically a handful of files.
-    benchmark_runs = list_runs()
+    # `forgeway bench` run (plus any caller-supplied imported_evidence)
+    # becomes a scoring candidate wherever its workload_id/compute_target_id
+    # match (app.engine.evidence_gateway) — re-reading that directory from
+    # disk for each of the estate's targets would be needless, repeated I/O
+    # for what's typically a handful of files.
+    benchmark_runs = list_runs() + (imported_evidence or [])
 
     # Steps 3-6, per target.
     for target in targets:

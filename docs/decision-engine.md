@@ -52,21 +52,31 @@ call, so none of them repeats the gather-then-select pattern separately.
    list_runs()`) whose `workload_id` and `compute_target_id` match this
    pair exactly — no fuzzy matching, no matching on model family or
    partial name. A real benchmark run becomes a *candidate* the moment
-   it's saved, with no separate wiring needed per run — **but a run saved
-   by today's `forgeway bench` won't actually be *selected***, because
-   its metric keys don't match what `select_evidence` requires (see
-   "What's out of scope" below; `tests/test_decision_evidence_integration.py::
-   test_a_real_forgeway_bench_run_is_not_selected_yet` pins this down).
+   it's saved, with no separate wiring needed per run. Whether it's
+   actually *selected* depends on whether it carries the engine's
+   canonical metric keys — `forgeway bench` now stamps those onto every
+   run it saves (throughput always, P99 latency only when a real P99 was
+   captured — see `docs/benchmarking.md`'s "current limitations"), so a
+   run with a captured P99 is selectable; one without isn't
+   (`tests/test_decision_evidence_integration.py` proves both cases).
+3. **Evidence imported through the web UI** (`docs/importing-results.md`)
+   — a `PerformanceEvidence` record a user uploaded and validated in
+   their browser, passed into `run_decision(..., imported_evidence=...)`
+   for that one request only. Not persisted anywhere server-side; see
+   "Three callers" below.
 
 `benchmark_runs` is fetched **once per `run_decision()` call**, not once
-per target — `run_decision()` calls `list_runs()` a single time and passes
-the result to every `resolve_evidence()` call for that decision.
-Re-reading and re-parsing every locally saved benchmark file once per
-target in the estate would be needless, repeated disk I/O; this way it's
-one filesystem read regardless of how many targets are evaluated. (If
-`~/.forgeway/benchmarks` grows very large, this is still a full-directory
-read on every `/api/analyze` call — acceptable for a fixture-scale demo,
-worth revisiting with caching if it ever becomes a hot path.)
+per target — `run_decision()` calls `list_runs()` a single time, appends
+the caller's `imported_evidence` (if any — web-imported evidence never
+touches disk, so this is a plain in-memory list concatenation, not another
+read), and passes the combined list to every `resolve_evidence()` call for
+that decision. Re-reading and re-parsing every locally saved benchmark
+file once per target in the estate would be needless, repeated disk I/O;
+this way it's one filesystem read regardless of how many targets are
+evaluated. (If `~/.forgeway/benchmarks` grows very large, this is still a
+full-directory read on every `/api/analyze` call — acceptable for a
+fixture-scale demo, worth revisiting with caching if it ever becomes a hot
+path.)
 
 ## Evidence selection: comparability before provenance
 
@@ -148,14 +158,17 @@ clear the 85% bar, and — because it already wins on weighted score once
 both candidates qualify (same math as the workload's own default-confidence
 baseline) — the recommendation switches from H100 to MI300X.
 
-## Two callers, one engine
+## Three callers, one engine
 
-`run_decision()` has exactly two callers: the web app's routers
-(`/api/analyze`, the estate insight panel, both simulation types) and the
-CLI's `forgeway analyze` (`docs/benchmarking.md`'s sibling command,
-README.md's end-to-end CLI flow). Neither reimplements any part of the
-11-step pipeline — `forgeway analyze` calls the identical function, then
-reframes its `candidates` as a vendor-neutral `PlacementDecision`
+`run_decision()` has three callers: the web app's routers (`/api/analyze`,
+the estate insight panel, both simulation types), the CLI's
+`forgeway analyze` (`docs/benchmarking.md`'s sibling command, README.md's
+end-to-end CLI flow), and `/api/analyze` again but with a user's
+browser-imported targets/evidence attached
+(`docs/importing-results.md`) — the same route, not a fourth code path.
+None of the three reimplements any part of the 11-step pipeline —
+`forgeway analyze` calls the identical function, then reframes its
+`candidates` as a vendor-neutral `PlacementDecision`
 (`PlacementDecision.from_candidates(workload, record.candidates)`,
 `docs/schemas.md`) instead of the product's own `Recommendation` shape.
 
@@ -172,6 +185,16 @@ each calling `load_compute_targets()` independently) now receive the same
 it — the same "resolve a shared resource once, thread it through" pattern
 already used for `benchmark_runs` above.
 
+The web import flow needed the same for evidence: an optional
+`imported_evidence` parameter, `None` by default, appended to
+`benchmark_runs` for that call only (see above). `/api/analyze`
+(`app/routers/analyze.py`) is the only caller that ever passes non-empty
+`imported_targets`/`imported_evidence` — it merges the request's
+`imported_targets` with the fixture catalog first, rejecting (400) any id
+collision, before calling `run_decision()`. Nothing is written to disk or
+to the in-memory store as a result; the response is exactly as ephemeral
+as any other `/api/analyze` call.
+
 ## The web UI
 
 `ComputeTarget`/`Workload`/`Prediction`/`Metric` shapes are unchanged
@@ -185,21 +208,17 @@ a fixture's.
 
 ## What's out of scope for this pass
 
-- **`forgeway bench`'s own saved records don't yet use the canonical metric
-  keys**, so a real run saved today (`end_to_end_latency_ms`,
-  `output_token_throughput_tokens_per_s` — see `docs/benchmarking.md`)
-  won't currently be picked up by `select_evidence` for an existing demo
-  workload. The *connection mechanism* is real and fully tested
-  (`tests/test_decision_evidence_integration.py` constructs evidence in
-  the shape a bridged run would take and proves the engine correctly
-  prefers it), but bridging vLLM's `end_to_end_latency_ms` (an *average*
-  over N iterations, for a specific input/output/concurrency
-  configuration) to the engine's `p99_latency_ms_per_replica` (a *P99*
-  figure implicitly describing steady-state per-replica capacity) would
-  be asserting a statistical equivalence that isn't actually true — doing
-  that silently would be exactly the kind of fabricated evidence this
-  project has been careful to avoid everywhere else. That bridge is a
-  deliberate modeling decision for a future pass, not a mechanical one.
+- **The P99 latency alias only bridges when a real P99 was captured.**
+  `forgeway bench`'s saved records now carry the engine's canonical
+  metric keys (see `docs/benchmarking.md`), but bridging vLLM's
+  `end_to_end_latency_ms` (an *average* over N iterations) to the
+  engine's `p99_latency_ms_per_replica` (a *P99* figure implicitly
+  describing steady-state per-replica capacity) would assert a
+  statistical equivalence that isn't actually true if there's no real P99
+  to alias from — so a run without `--percentiles ...,99` still isn't
+  selectable, by design, not by omission
+  (`tests/test_decision_evidence_integration.py` proves both the
+  selectable and non-selectable cases).
 - Today's flagship demo workload (`wl-llama70b-rt`, Llama 3.1 **70B**) and
   the benchmark runner's prioritized model (Llama 3.1 **8B** Instruct) are
   different models — a real 8B benchmark run would never be valid

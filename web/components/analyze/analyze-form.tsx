@@ -1,14 +1,16 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ArrowRight } from "lucide-react";
+import { ArrowRight, UploadCloud } from "lucide-react";
+import Link from "next/link";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { api } from "@/lib/api";
+import { getImportedEvidence, getImportedTargets } from "@/lib/imported-storage";
 import type { WorkloadListItem } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -30,6 +32,11 @@ export function AnalyzeForm({ items }: { items: WorkloadListItem[] }) {
   const [submitting, setSubmitting] = useState(false);
   const [activeStep, setActiveStep] = useState(-1);
   const [error, setError] = useState<string | null>(null);
+  const [importedCount, setImportedCount] = useState({ targets: 0, evidence: 0 });
+
+  useEffect(() => {
+    setImportedCount({ targets: getImportedTargets().length, evidence: getImportedEvidence().length });
+  }, []);
 
   const selected = useMemo(
     () => items.find((i) => i.workload.id === selectedId)?.workload,
@@ -47,8 +54,9 @@ export function AnalyzeForm({ items }: { items: WorkloadListItem[] }) {
     }, STEP_INTERVAL_MS);
 
     try {
+      const imported = { targets: getImportedTargets(), evidence: getImportedEvidence() };
       const [record] = await Promise.all([
-        api.analyze(selected.id),
+        api.analyze(selected.id, imported),
         new Promise((resolve) => setTimeout(resolve, PIPELINE_STEPS.length * STEP_INTERVAL_MS)),
       ]);
       clearInterval(stepTimer);
@@ -175,6 +183,32 @@ export function AnalyzeForm({ items }: { items: WorkloadListItem[] }) {
             </div>
 
             <Separator />
+
+            {importedCount.targets > 0 || importedCount.evidence > 0 ? (
+              <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+                <Badge variant="measured" className="uppercase">
+                  Your measured compute
+                </Badge>
+                <span>
+                  {importedCount.targets} imported target{importedCount.targets === 1 ? "" : "s"} and{" "}
+                  {importedCount.evidence} evidence record{importedCount.evidence === 1 ? "" : "s"} from
+                  this browser will be included in this analysis.
+                </span>
+              </div>
+            ) : (
+              <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+                <span>No hardware imported yet — this analysis only evaluates</span>
+                <Badge variant="outline" className="uppercase">
+                  reference compute
+                </Badge>
+                <span>
+                  . <Link href="/import" className="underline">
+                    Import a benchmark result
+                  </Link>{" "}
+                  to add your own.
+                </span>
+              </div>
+            )}
 
             {error ? <p className="text-sm text-destructive">{error}</p> : null}
 

@@ -158,12 +158,16 @@ app/
   analyze/page.tsx                /analyze         workload analyzer (template picker → run analysis)
   recommendations/[id]/page.tsx   /recommendations/[id]   recommendation detail + scenario simulation
   workloads/page.tsx              /workloads       active workload inventory
+  import/page.tsx                 /import          upload + validate a real ComputeTarget/PerformanceEvidence pair
 components/
   recommendations/                summary, split-allocation panel, candidate comparison table,
                                    evidence panel, and recommendation-workspace.tsx — the client
                                    component that owns the scenario picker and swaps in the
                                    comparison view, all rendering Recommendation/ScenarioComparison
                                    exactly as the API returns them
+  import/                         import-panel.tsx — upload dropzones, validation-error display,
+                                   and the "your measured compute" list, backed by
+                                   lib/imported-storage.ts (browser localStorage only)
   scenarios/                      state-snapshot-card.tsx (the compact BEFORE/AFTER card) and
                                    scenario-comparison-view.tsx (EVENT banner + BEFORE → AFTER +
                                    the change-explanation callout + full AFTER detail)
@@ -266,6 +270,12 @@ caveats.
 forgeway bench --model meta-llama/Llama-3.1-8B-Instruct --input-tokens 512 --output-tokens 128 --concurrency 1
 ```
 
+The saved evidence's `workload_id` defaults to `--model` — never a real Forgeway workload id, so
+never selectable by the placement engine for any workload (see below), but also never colliding
+with one. Pass `--workload-id <id>` to tag it with a real workload id instead, **only when
+`--model` actually corresponds to that workload** (same family/parameter count) — see
+[`docs/importing-results.md`](docs/importing-results.md#tagging-evidence-with-a-real-workload-id).
+
 ## CLI: placement analysis
 
 `forgeway analyze` runs **the exact same decision engine the web app uses**
@@ -291,29 +301,53 @@ recommendation from AMD's MI300X to NVIDIA's H100 — see the file's own comment
 By default, `analyze` evaluates the fixture catalog **and** (best-effort) whatever
 `forgeway discover` finds on the local machine — pass `--skip-discovery` to use the fixture
 catalog only. A locally saved `forgeway bench` run for a matching workload/target is picked up
-the same way any other evidence is (`docs/decision-engine.md`) — though, as that doc explains,
-`forgeway bench`'s own metric keys don't yet match what the engine looks for, so a real run
-doesn't currently change an existing demo workload's recommendation.
+the same way any other evidence is (`docs/decision-engine.md`) — but only if it was saved with
+`--workload-id` set to that workload's real id (see above); `forgeway bench`'s own default
+(`workload_id` = the `--model` string) never matches an existing demo workload, so a default run
+doesn't affect any existing demo workload's recommendation.
 
-## End-to-end CLI flow
+## Web: importing a real benchmark result
 
-The three commands above form one coherent pipeline, each step's output usable by the next:
+`/import` lets you upload the `ComputeTarget` + `PerformanceEvidence` JSON the CLI above produces,
+validate it against the real schema, and use it in `/analyze` — labeled `YOUR MEASURED COMPUTE`,
+never merged into or confused with the `REFERENCE COMPUTE` fixture catalog. Stored only in your
+browser (`localStorage`); no accounts, no server-side persistence. See
+[`docs/importing-results.md`](docs/importing-results.md).
+
+## End-to-end: CLI benchmark → web import → analyze
+
+The three CLI commands plus the web import above form one coherent pipeline, each step's output
+usable by the next:
 
 ```bash
-forgeway discover                                                        # 1. what hardware is here?
-forgeway bench --model meta-llama/Llama-3.1-8B-Instruct                  # 2. how does it perform?
-forgeway analyze examples/workload.yaml                                  # 3. where should this workload run?
-forgeway runs                                                            # (list every benchmark run saved along the way)
+forgeway discover --json > my-target.json                                              # 1. what hardware is here?
+forgeway bench --model <model> --workload-id <a real workload id it matches> --json \
+  > my-evidence.json                                                                   # 2. how does it perform?
+forgeway analyze examples/workload.yaml                                                # 3. where should this workload run? (CLI path)
+forgeway runs                                                                           # (list every benchmark run saved along the way)
 ```
 
-None of this touches the web demo's in-memory store or UI. `forgeway analyze` does read the same
-fixture catalog the web app reads (`app/data/loader.py`) as its base target list — that's what
-makes `examples/workload.yaml` directly comparable to the web app's own `/analyze` page — but it
-never writes to the demo's store, and nothing it does is visible from the web UI. Requires the
-full backend setup above,
-plus vLLM and a CUDA GPU for step 2 specifically (`docs/benchmarking.md`); steps 1 and 3 work on
-any machine — step 1 reports "no supported accelerator" cleanly without one, and step 3 falls
-back to the fixture catalog alone.
+Then, in the browser: open `/import`, upload `my-target.json` and `my-evidence.json`, then run
+`/analyze` on the matching workload — the same result as step 3 above, but through the web UI,
+with your real hardware included as a candidate alongside the fixture catalog.
+
+**`--workload-id` only makes sense when your benchmarked model genuinely matches an existing
+workload** (same family/parameter count) — `forgeway bench`'s own default model
+(Llama 3.1 8B Instruct) doesn't correspond to any of this demo's five workloads, so a plain
+`forgeway bench` run (no `--workload-id`) imports and displays correctly but is honestly never
+picked up during analysis. To see the full pipeline working end-to-end without needing matching
+GPU hardware, skip step 2 and upload the pair already checked into this repo instead —
+`examples/discovered-target.json` + `examples/benchmark-result.json`, a real, honestly-tagged
+pair for `wl-llama70b-rt` (see `examples/README.md`) — then run `/analyze` on that workload.
+
+None of this touches the web demo's in-memory store or UI persistently. `forgeway analyze` does
+read the same fixture catalog the web app reads (`app/data/loader.py`) as its base target list —
+that's what makes `examples/workload.yaml` directly comparable to the web app's own `/analyze`
+page — but it never writes to the demo's store. The web import flow similarly never writes
+anything server-side; imported data lives only in your browser. Requires the full backend setup
+above, plus vLLM and a CUDA GPU for step 2 specifically (`docs/benchmarking.md`); steps 1, 3, and
+the web import all work on any machine — step 1 reports "no supported accelerator" cleanly
+without one, and step 3 falls back to the fixture catalog alone.
 
 ---
 
@@ -334,19 +368,22 @@ unified across fixture data and any real, locally saved `forgeway bench` run for
 workload/target (`MEASURED > PUBLISHED > MODELED` — see
 [`docs/decision-engine.md`](docs/decision-engine.md)); `forgeway analyze` exposes that same
 engine directly (`app/engine/decision.py::run_decision`, unchanged) against a YAML-defined
-workload, and can add a locally discovered target to the fixture catalog it scores against.
+workload, and can add a locally discovered target to the fixture catalog it scores against. The
+web UI can now do the equivalent: `/import` validates and stores a real `ComputeTarget` +
+`PerformanceEvidence` pair in the browser, and `/analyze` includes it as an extra candidate,
+labeled `YOUR MEASURED COMPUTE` and never merged into the `REFERENCE COMPUTE` fixture catalog —
+see [`docs/importing-results.md`](docs/importing-results.md).
 
-**Not implemented (by design, this build):** the web demo above still runs entirely on
-fixtures — no cloud API calls, no live telemetry feeding it, no Kubernetes; `forgeway discover`
-and `forgeway bench` are not wired into the web UI, only into the CLI's own `forgeway analyze`.
-`forgeway bench`'s saved runs *are* wired into the decision engine's evidence path, but its own
-metric key names don't yet match what the engine looks for, so a real run doesn't currently
-affect an existing demo workload's recommendation — see `docs/decision-engine.md`'s "what's out
-of scope" section.
-No persistence beyond an in-memory store (restart the API and every simulated recommendation is
-gone; the baseline Insight reseeds). No custom workload authoring in `/analyze` — only the
-fixture workload library. No LLM in the decision path — the deterministic engine decides;
-nothing here calls a model to place a workload.
+**Not implemented (by design, this build):** the web demo's own fixture catalog and baseline
+scenarios still run entirely on fixtures — no cloud API calls, no live telemetry feeding it, no
+Kubernetes; `forgeway discover` and `forgeway bench` themselves still only run from the CLI (the
+web UI consumes their *output* via `/import`, not the tools themselves). No persistence beyond
+an in-memory store server-side, and browser-local-only storage for imports (restart the API and
+every simulated recommendation is gone, the baseline Insight reseeds; clear browser data and
+every imported target/evidence record is gone too). No custom workload authoring in `/analyze` —
+only the fixture workload library, though an imported target can stand in as an extra candidate
+for one of those fixture workloads. No LLM in the decision path — the deterministic engine
+decides; nothing here calls a model to place a workload.
 
 ---
 

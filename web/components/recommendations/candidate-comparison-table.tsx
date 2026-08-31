@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { CheckCircle2, ChevronDown, XCircle } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
@@ -13,6 +13,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { VendorBadge } from "@/components/vendor-badge";
+import { importedTargetIds } from "@/lib/imported-storage";
 import type { CandidateEvaluation, CandidateStatus } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -48,7 +49,7 @@ function ScoreBar({ value }: { value: number | null }) {
   );
 }
 
-function CandidateRow({ candidate }: { candidate: CandidateEvaluation }) {
+function CandidateRow({ candidate, isImported }: { candidate: CandidateEvaluation; isImported: boolean }) {
   const [open, setOpen] = useState(false);
 
   return (
@@ -63,7 +64,18 @@ function CandidateRow({ candidate }: { candidate: CandidateEvaluation }) {
               <div className="truncate font-mono text-xs font-medium text-foreground">
                 {candidate.target_label}
               </div>
-              <VendorBadge vendor={candidate.vendor} className="mt-0.5" />
+              <div className="mt-0.5 flex items-center gap-1.5">
+                <VendorBadge vendor={candidate.vendor} />
+                {isImported ? (
+                  <Badge variant="measured" className="uppercase">
+                    Your measured compute
+                  </Badge>
+                ) : (
+                  <Badge variant="outline" className="uppercase text-muted-foreground">
+                    Reference compute
+                  </Badge>
+                )}
+              </div>
             </div>
           </div>
         </TableCell>
@@ -117,6 +129,12 @@ function CandidateRow({ candidate }: { candidate: CandidateEvaluation }) {
 const STATUS_ORDER: Record<CandidateStatus, number> = { recommended: 0, feasible: 1, rejected: 2 };
 
 export function CandidateComparisonTable({ candidates }: { candidates: CandidateEvaluation[] }) {
+  const [importedIds, setImportedIds] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    setImportedIds(importedTargetIds());
+  }, []);
+
   const sorted = [...candidates].sort((a, b) => {
     if (a.status !== b.status) return STATUS_ORDER[a.status] - STATUS_ORDER[b.status];
     if (a.rank && b.rank) return a.rank - b.rank;
@@ -145,7 +163,7 @@ export function CandidateComparisonTable({ candidates }: { candidates: Candidate
         </TableHeader>
         <TableBody>
           {sorted.map((c) => (
-            <CandidateRow key={c.target_id} candidate={c} />
+            <CandidateRow key={c.target_id} candidate={c} isImported={importedIds.has(c.target_id)} />
           ))}
         </TableBody>
       </Table>

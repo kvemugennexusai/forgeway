@@ -107,11 +107,13 @@ _BENCH_METRIC_LABELS: list[tuple[str, str, str]] = [
 ]
 
 
-def format_bench_human(evidence: PerformanceEvidence, saved_path: Path) -> str:
+def format_bench_human(evidence: PerformanceEvidence, saved_path: Path, model: str) -> str:
     lines = [
         "Forgeway benchmark: vllm bench latency",
         "",
-        f"  Model            {evidence.workload_id}",
+        f"  Model            {model}",
+        f"  Workload id      {evidence.workload_id}"
+        + ("" if evidence.workload_id != model else "  (defaulted to --model; pass --workload-id to tag it as a real Forgeway workload)"),
         f"  Target           {evidence.compute_target_id}",
         f"  Configuration    {evidence.configuration}",
         f"  Run id           {evidence.benchmark_run_id}",
@@ -133,7 +135,7 @@ def format_bench_human(evidence: PerformanceEvidence, saved_path: Path) -> str:
 
 
 def format_runs_table(runs: list[PerformanceEvidence]) -> str:
-    header = f"{'RUN ID':<20} {'TIMESTAMP':<26} {'MODEL':<38} {'TARGET':<28} {'LATENCY (ms)':>12}"
+    header = f"{'RUN ID':<20} {'TIMESTAMP':<26} {'WORKLOAD ID':<38} {'TARGET':<28} {'LATENCY (ms)':>12}"
     lines = [header, "-" * len(header)]
     for r in runs:
         latency = r.metrics.get("end_to_end_latency_ms")
@@ -179,13 +181,14 @@ def cmd_bench(args: argparse.Namespace) -> int:
         parsed=parsed,
         gpu_samples=raw.gpu_samples,
         run_id=run_id,
+        workload_id=args.workload_id,
     )
     saved_path = save_run(evidence, raw_output=raw.raw_json)
 
     if args.json:
         print(evidence.model_dump_json(indent=2))
     else:
-        print(format_bench_human(evidence, saved_path))
+        print(format_bench_human(evidence, saved_path, model=args.model))
     return 0
 
 
@@ -375,6 +378,18 @@ def build_parser() -> argparse.ArgumentParser:
     )
     bench_parser.add_argument(
         "--model", default="meta-llama/Llama-3.1-8B-Instruct", help="Model to benchmark (default: %(default)s)."
+    )
+    bench_parser.add_argument(
+        "--workload-id",
+        default=None,
+        help=(
+            "Tag the saved evidence with an existing Forgeway workload id (e.g. wl-llama70b-rt) "
+            "so the placement engine can select it for that workload — see docs/importing-results.md. "
+            "Only honest when --model actually corresponds to that workload (same model family/parameter "
+            "count); this demo's default --model (Llama 3.1 8B) does not correspond to any of the five "
+            "demo workloads, so do not tag it as one of them. Defaults to --model's value, which is never "
+            "selectable against a real workload but also never collides with one."
+        ),
     )
     bench_parser.add_argument(
         "--input-tokens", type=int, default=512, help="Input sequence length (default: %(default)s)."

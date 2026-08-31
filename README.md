@@ -9,18 +9,89 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript&logoColor=white)](web/package.json)
 [![Last commit](https://img.shields.io/github/last-commit/kvemugennexusai/forgeway)](https://github.com/kvemugennexusai/forgeway/commits/main)
 
-Forgeway is the decision layer for heterogeneous AI infrastructure. Given a workload, its
-service-level objective, enterprise policy, the available compute targets, predicted or
-measured performance, and capacity/economics, Forgeway determines which targets are
-**feasible**, predicts the outcome on each, **ranks** them, **recommends** a placement, and
-**explains why** — including what loses and why, and how the recommendation changes under a
-demand spike or a capacity loss.
-
-This is a product demo, not an orchestration platform: it does not schedule Kubernetes
-workloads or migrate anything. Every compute target, workload, and performance figure is a
-JSON fixture. There are no real infrastructure integrations.
+**Forgeway is an open-source workload intelligence layer for heterogeneous AI compute.** It
+evaluates workload requirements, compute capabilities, performance evidence, SLOs, and policy
+to determine where AI workloads should run — which targets are **feasible**, what the predicted
+outcome on each is, how they **rank**, which one it **recommends**, and **why** — including what
+loses and why, and how the recommendation changes under a demand spike or a capacity loss.
 
 > A fresh, independent build — not a fork or port of any prior project. New repo, own history.
+
+### Why it exists
+
+Placing an AI workload — which GPU, which region, which vendor — is usually a spreadsheet, a
+gut call, or whoever's on-call that week. Forgeway makes that decision an explicit, typed,
+re-runnable function: the same inputs always produce the same recommendation, every number
+carries its own confidence and provenance (measured vs. published vs. modeled), and the engine
+will tell you honestly when it doesn't have enough evidence to recommend anything, rather than
+guessing.
+
+### What can I run today?
+
+- **The CLI**, on any machine: `forgeway discover` (real local NVIDIA hardware, if present),
+  `forgeway bench` (a real vLLM benchmark, if you have a CUDA GPU), and `forgeway analyze` (the
+  real decision engine, against this repo's fixture workloads or your own YAML) — see
+  **Quick start** below.
+- **The web demo**: a fixture-driven dashboard, workload analyzer, and scenario simulator, plus
+  `/import` — upload a real `forgeway discover`/`forgeway bench` result and let the same engine
+  score it alongside the fixture catalog. See "Running the demo" below.
+
+### What hardware is supported today?
+
+**Local NVIDIA CUDA-capable GPUs only**, via `nvidia-smi` — for both discovery
+([`docs/discovery.md`](docs/discovery.md)) and benchmarking
+([`docs/benchmarking.md`](docs/benchmarking.md)). No AMD, Intel, or cloud-vendor discovery yet
+— AMD ROCm is next; see [`ROADMAP.md`](ROADMAP.md) and
+[`docs/adding-an-accelerator.md`](docs/adding-an-accelerator.md) for how that gets added. The
+decision engine itself is hardware-agnostic — it scores whatever `ComputeTarget`s it's given,
+real or fixture — the discovery/benchmark *adapters* are what's currently NVIDIA-only.
+
+### What is experimental / simulated?
+
+- **The web demo's dashboard and five sample workloads are fixture data**, not live
+  infrastructure — every compute target, workload, and baseline performance figure in the demo
+  ships as a JSON fixture (`api/app/fixtures/`), clearly labeled with its own provenance
+  (`MEASURED` / `PUBLISHED` / `MODELED`). There are no real cloud/infrastructure integrations —
+  Forgeway does not schedule, provision, or migrate anything.
+- **Discovery and benchmarking are real, but narrow**: one vendor (NVIDIA), one benchmark path
+  (`vllm bench latency`). Real output, limited scope — see the docs linked above for exactly
+  what's measured vs. estimated.
+- **Scenario simulation** (demand spike, capacity loss, policy changes) recomputes the real
+  engine against a hypothetical input — it's a real re-run, not a live projection from telemetry.
+- **`/import`** stores uploaded hardware/evidence in browser `localStorage` only — no server-side
+  persistence, no accounts, nothing shared across devices.
+- **No LLM or machine learning anywhere in the decision path** — every step (feasibility,
+  scoring, ranking) is a deterministic, unit-tested function over typed data.
+
+See "What's implemented vs. not" further down for the complete list.
+
+---
+
+## Quick start
+
+Requires Python 3.10+. From the repo root:
+
+```bash
+# 1. install
+cd api
+python3 -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
+pip install -r requirements.txt        # registers the `forgeway` console script
+
+# 2. discover — real local NVIDIA hardware, if present (cleanly reports "none found" otherwise)
+forgeway discover
+
+# 3. bench — a real vLLM benchmark (requires a CUDA GPU + vLLM installed; see docs/benchmarking.md)
+forgeway bench --model meta-llama/Llama-3.1-8B-Instruct --input-tokens 512 --output-tokens 128
+
+# 4. analyze — the real decision engine against a workload (works on any machine, no GPU required)
+forgeway analyze examples/workload.yaml
+```
+
+Steps 1 and 4 work on any machine with no GPU. Step 2 works on any machine but only finds
+hardware on one with an NVIDIA GPU and driver installed. Step 3 needs a CUDA GPU and vLLM. See
+"CLI: hardware discovery", "CLI: benchmarking", and "CLI: placement analysis" below for the full
+detail on each, and "End-to-end: CLI benchmark → web import → analyze" for how all four (plus the
+web UI) connect.
 
 ---
 
@@ -86,7 +157,7 @@ tests/test_scenarios.py     unit tests: the six presets' exact parameter values,
 
 > Forgeway's long-term goal is to describe this core as an open-source
 > workload intelligence layer for heterogeneous AI compute, reusable outside
-> this demo. See [`docs/open-source-architecture.md`](docs/open-source-architecture.md)
+> this demo. See [`docs/architecture.md`](docs/architecture.md)
 > for the public-vs-product boundary this split establishes.
 
 **The decision pipeline, in order:** load workload → load compute targets → evaluate hard
@@ -195,7 +266,7 @@ Two terminals.
 **Backend** (from `api/`):
 
 ```bash
-python3 -m venv .venv && source .venv/bin/activate
+python3 -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 uvicorn app.main:app --reload --port 8000
 ```
@@ -386,6 +457,12 @@ for one of those fixture workloads. No LLM in the decision path — the determin
 decides; nothing here calls a model to place a workload.
 
 ---
+
+## Contributing and roadmap
+
+See [`CONTRIBUTING.md`](CONTRIBUTING.md) for local setup, test commands, and how to add benchmark
+evidence, a discovery adapter, or a workload fixture. See [`ROADMAP.md`](ROADMAP.md) for what's
+next (AMD ROCm discovery is first).
 
 ## License
 

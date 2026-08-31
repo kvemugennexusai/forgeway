@@ -25,9 +25,6 @@ export interface Metric {
   evidence_reference: string | null;
 }
 
-/** @deprecated use Metric */
-export type PriceInfo = Metric;
-
 export interface UnsupportedWorkloadClass {
   workload_class: string;
   reason: string;
@@ -50,7 +47,7 @@ export interface ComputeTarget {
    * "not known" — not populated by today's fixtures or the NVIDIA
    * discovery adapter; see docs/schemas.md. */
   runtime_support: string[] | null;
-  price_per_hr_per_unit: PriceInfo;
+  price_per_hr_per_unit: Metric;
   status: "healthy" | "degraded" | "offline";
   unsupported_workload_classes: UnsupportedWorkloadClass[];
   notes: string;

@@ -1,7 +1,7 @@
 # Forgeway data contracts — forgeway/v0.1
 
 This formalizes the four vendor-neutral data contracts behind Forgeway's
-[reusable core](open-source-architecture.md): **ComputeTarget**,
+[reusable core](architecture.md): **ComputeTarget**,
 **AIWorkload**, **PerformanceEvidence**, and **PlacementDecision**. Every
 one carries `schema_version: "forgeway/v0.1"`. Code lives in
 `api/app/core/schemas/v0_1/`; serialized instances are in
@@ -113,7 +113,7 @@ class under the same formal name; nothing importing it needs to change.
 | `source` | `str` | representative source string (today's fixtures give every metric in a row the same source) |
 | `timestamp` | `Optional[datetime]` | `None` means "not recorded" — deliberately never defaulted to "now", since that would misrepresent migrated fixture data as a fresh measurement |
 | `forgeway_version` | `str` | defaults to the running build (`app.core.version.FORGEWAY_VERSION`) |
-| `benchmark_run_id` | `Optional[str]` | for a future benchmark runner (goal item 7 — not built yet) to correlate evidence with a specific run |
+| `benchmark_run_id` | `Optional[str]` | set by `forgeway bench` (`docs/benchmarking.md`) to correlate evidence with a specific saved run; `None` for fixture-derived evidence |
 
 ## 4. PlacementDecision
 

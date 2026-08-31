@@ -10,7 +10,7 @@ below unchanged, so every existing `from app.models import X` keeps working.
 Everything defined directly in this file — Recommendation, the six-scenario
 types, estate/dashboard views, request DTOs — is this product's own
 storytelling and API surface on top of that core; see
-docs/open-source-architecture.md for the boundary.
+docs/architecture.md for the boundary.
 """
 from __future__ import annotations
 

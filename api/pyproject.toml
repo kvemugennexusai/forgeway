@@ -6,7 +6,16 @@ build-backend = "setuptools.build_meta"
 name = "forgeway"
 version = "0.1.0"
 description = "Forgeway workload intelligence layer — decision engine, CLI, and hardware discovery."
+license = { text = "Apache-2.0" }
 requires-python = ">=3.10"
+classifiers = [
+    "License :: OSI Approved :: Apache Software License",
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Topic :: System :: Distributed Computing",
+]
 dependencies = [
     "fastapi>=0.115",
     "uvicorn[standard]>=0.32",

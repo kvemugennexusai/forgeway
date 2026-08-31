@@ -29,7 +29,7 @@ this product's narrative. This function is the product-level orchestrator:
 it wires the core engine to this demo's data source (app/data/loader.py),
 adds the greedy-split fallback and confidence gate below, and builds the
 Recommendation's evidence/reasoning narrative — none of which the reusable
-core needs to know about. See docs/open-source-architecture.md.
+core needs to know about. See docs/architecture.md.
 
 This is the ONLY function that produces a Recommendation. Every route that
 needs one — /analyze, the estate insight panel, and both simulation types —

@@ -78,7 +78,7 @@ behavior against mocked `nvidia-smi` output.
 running on it directly. Explicitly out of scope for this pass: AMD, Intel,
 AWS Trainium/Inferentia, Jetson-specific behavior, and any cloud/remote
 discovery (querying a fleet, an API, or a cluster). See
-[`docs/open-source-architecture.md`](open-source-architecture.md) for
+[`docs/architecture.md`](architecture.md) for
 where those fit in the longer-term roadmap.
 
 ## Required tooling
@@ -154,9 +154,14 @@ X.Y)"` rather than guessed.
 - **No degraded/offline detection.** If `nvidia-smi` runs and returns data
   at all, `status` is always `"healthy"` — this adapter doesn't yet parse
   fault/throttle indicators out of `nvidia-smi`'s output.
-- **Not wired into anything else yet.** `forgeway discover` only prints or
-  emits JSON — it doesn't feed `app/data/loader.py`, the in-memory decision
-  store, or the web UI. See `docs/open-source-architecture.md`.
+- **Doesn't automatically feed the fixture catalog, the in-memory store,
+  or the estate dashboard.** `forgeway discover` prints or emits JSON;
+  getting a discovered target into an actual placement decision is manual:
+  `forgeway analyze` picks up a locally discovered target automatically
+  (best-effort, `--skip-discovery` to opt out), and the web UI's `/import`
+  accepts an uploaded `ComputeTarget` JSON for that browser session (see
+  [`docs/importing-results.md`](importing-results.md)) — neither is a live,
+  continuously-refreshed inventory. See `docs/architecture.md`.
 
 ## Failure behavior
 

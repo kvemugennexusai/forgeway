@@ -9,11 +9,17 @@ only job is running the external tool and getting its output back, so it
 can be tested (mocking subprocess.Popen) independent of parsing/evidence
 concerns.
 
-Scope: local NVIDIA CUDA systems, one benchmark path — `vllm bench
-latency`, an offline (no server) per-request latency benchmark. See
-docs/benchmarking.md for why this path was chosen and what it does not
-measure (notably: no TTFT — that needs a streaming/serving benchmark like
-`vllm bench serve`, not this one).
+Scope: local NVIDIA CUDA or AMD ROCm systems, one benchmark path — `vllm
+bench latency`, an offline (no server) per-request latency benchmark. The
+`vllm bench latency` subprocess and command line are identical either way
+(PyTorch/HIP handle device dispatch underneath); `gpu_vendor` here only
+selects which vendor's telemetry sampler (app.benchmark.gpu_sampler for
+NVIDIA, app.benchmark.rocm_gpu_sampler for AMD) polls memory/power while it
+runs. See docs/benchmarking.md for why this path was chosen and what it
+does not measure (notably: no TTFT — that needs a streaming/serving
+benchmark like `vllm bench serve`, not this one), and for the real
+dependency gap between the two vendors — `pip install vllm` gets you the
+CUDA build; a ROCm-capable vllm needs a heavier, ROCm-specific install.
 
 Subprocess I/O note: stdout/stderr are redirected to temp files, not
 subprocess.PIPE — vLLM can write more logging output than a pipe's OS
@@ -33,6 +39,7 @@ from pathlib import Path
 
 from app.benchmark.errors import BenchmarkError
 from app.benchmark.gpu_sampler import GpuSample, sample_gpu_once
+from app.benchmark.rocm_gpu_sampler import sample_gpu_once as sample_gpu_once_rocm
 
 DEFAULT_ITERATIONS = 3
 DEFAULT_WARMUP_ITERATIONS = 1
@@ -64,12 +71,17 @@ def run_vllm_bench_latency(
     timeout_s: float = DEFAULT_TIMEOUT_S,
     sample_interval_s: float = DEFAULT_SAMPLE_INTERVAL_S,
     device_index: int = 0,
+    gpu_vendor: str = "nvidia",
 ) -> RawBenchmarkResult:
     if not is_vllm_available():
         raise BenchmarkError(
-            "vllm is not installed or not on PATH. Install it (pip install vllm) on a "
-            "CUDA-capable machine to run this benchmark path — see docs/benchmarking.md."
+            "vllm is not installed or not on PATH. Install it on a CUDA- or ROCm-capable "
+            "machine to run this benchmark path — see docs/benchmarking.md."
         )
+    # Looked up by name at call time (not bound to a local at import time)
+    # so mock.patch("app.benchmark.vllm_runner.sample_gpu_once", ...) and its
+    # ROCm counterpart both still work as direct substitutions in tests.
+    sampler = sample_gpu_once_rocm if gpu_vendor == "amd" else sample_gpu_once
 
     output_fd, output_path_str = tempfile.mkstemp(suffix=".json", prefix="forgeway-vllm-bench-")
     os.close(output_fd)
@@ -110,7 +122,7 @@ def run_vllm_bench_latency(
             gpu_samples: list[GpuSample] = []
             start = time.monotonic()
             while True:
-                sample = sample_gpu_once(device_index)
+                sample = sampler(device_index)
                 if sample is not None:
                     gpu_samples.append(sample)
                 if process.poll() is not None:

@@ -26,21 +26,33 @@ boundary.
 - AMD ROCm local hardware discovery (`forgeway discover`, via `rocm-smi`
   — [`docs/discovery.md`](docs/discovery.md#amd-rocm-rocm-smi)), the second
   `DiscoveryAdapter` ([`docs/adding-an-accelerator.md`](docs/adding-an-accelerator.md)).
-  **Not yet verified against real AMD hardware** — only against hand-built
-  fixtures matching `rocm-smi`'s documented output shape, since rocm-smi's
-  JSON key naming/casing isn't as stable across ROCm releases as
-  `nvidia-smi`'s CSV schema. First real run against a ROCm machine may
-  surface a field-name variant the adapter's case-insensitive lookup
-  doesn't yet cover.
+  **Verified against a real AMD GPU** (a Radeon RX 9070 XT, RDNA4, over
+  SSH — [`docs/discovery.md`](docs/discovery.md#verified-against-real-hardware))
+  — every expected `rocm-smi` field name and casing matched, and the real
+  run surfaced a fix: architecture now resolves from rocm-smi's own `GFX
+  Version` field (e.g. `gfx1201`) instead of guessing from the product
+  name, since that field turned out to actually exist and be far more
+  reliable.
+- A ROCm benchmark path — `forgeway bench` dispatches its GPU telemetry
+  sampler by vendor (`nvidia-smi` or `rocm-smi`,
+  `api/app/benchmark/rocm_gpu_sampler.py`); the `vllm bench latency` command
+  itself is identical on either vendor. **The telemetry sampler is verified
+  against the same real AMD GPU** (a live power/memory reading came back
+  correctly); **an actual `vllm bench latency` run on ROCm is not** — see
+  [`docs/benchmarking.md`](docs/benchmarking.md#gpu-vendor-dispatch). The
+  real install gap this surfaces: `pip install vllm` only gets the CUDA
+  build; ROCm needs vLLM's Docker image or a from-source build against a
+  ROCm PyTorch — not installed on the test machine yet.
 
 ## Next
 
-- **A ROCm benchmark path** — the AMD equivalent of `forgeway bench`, once
-  a runtime target is chosen (`vllm` on ROCm, or a ROCm-native tool). See
-  [`docs/benchmarking.md`](docs/benchmarking.md)'s "Scope" section for the
-  files this touches (`app/benchmark/vllm_runner.py`, `app/benchmark/evidence.py`).
-- **Verify the ROCm discovery adapter on real AMD hardware** and fix
-  whatever field-shape surprises come up — see the v0.1 note above.
+- **Verify a real `vllm bench latency` run on ROCm** — install a
+  ROCm-capable vLLM on the same AMD test machine (a heavier, separate step
+  from what's been verified so far — see the v0.1 note above) and confirm
+  `run_vllm_bench_latency(..., gpu_vendor="amd")`'s subprocess
+  orchestration and `parser.py`'s assumptions about vLLM's output shape
+  hold up against a live run. This is the one piece of ROCm support still
+  "implemented against the documented shape" rather than confirmed live.
 - **Additional workloads** — more of the fixture library
   (`api/app/fixtures/workloads.json`) covering other model families and
   workload classes, so the decision engine's feasibility/scoring logic is

@@ -6,6 +6,12 @@ runs the same on a CI runner or a laptop with no GPU at all. See
 app/discovery/rocm.py's module docstring for why field lookups here are
 case-insensitive: rocm-smi's JSON key casing has varied across ROCm releases
 in the wild, unlike nvidia-smi's long-stable CSV schema.
+
+`_REAL_RX9070XT_SHOW_JSON` and `_REAL_DRIVER_VERSION_JSON` below are not
+hand-built — they're the actual, verbatim `rocm-smi --json` output captured
+from a real AMD Radeon RX 9070 XT (see test_discover_matches_real_rx9070xt_hardware),
+the one part of this adapter that's now verified against real hardware
+rather than only the documented shape.
 """
 from __future__ import annotations
 
@@ -85,6 +91,31 @@ _DIFFERENT_CASING_JSON = json.dumps(
 )
 
 _DRIVER_VERSION_JSON = json.dumps({"system": {"Driver version": "6.7.0"}})
+
+# Captured verbatim via SSH from a real AMD Radeon RX 9070 XT machine
+# (rocm-smi --showproductname --showuniqueid --showmeminfo vram --showuse
+# --json, ROCM-SMI-LIB 7.8.0, on Ubuntu / Linux 7.0.0-30-generic).
+_REAL_RX9070XT_SHOW_JSON = json.dumps(
+    {
+        "card0": {
+            "Unique ID": "0x4fbbc7e605b44800",
+            "GPU use (%)": "0",
+            "VRAM Total Memory (B)": "17095983104",
+            "VRAM Total Used Memory (B)": "291524608",
+            "Card Series": "AMD Radeon RX 9070 XT",
+            "Card Model": "0x7550",
+            "Card Vendor": "Advanced Micro Devices, Inc. [AMD/ATI]",
+            "Card SKU": "G295BP00",
+            "Subsystem ID": "0x0633",
+            "Device Rev": "0xc0",
+            "Node ID": "1",
+            "GUID": "25376",
+            "GFX Version": "gfx1201",
+        }
+    }
+)
+# Captured verbatim via SSH from the same machine (rocm-smi --showdriverversion --json).
+_REAL_DRIVER_VERSION_JSON = json.dumps({"system": {"Driver version": "7.0.0-30-generic"}})
 
 
 def _run(returncode: int = 0, stdout: str = "", stderr: str = "") -> subprocess.CompletedProcess:
@@ -173,8 +204,30 @@ def test_lookup_is_case_insensitive():
 
 
 # --------------------------------------------------------------------------
-# _architecture_for() — best-effort product-name mapping
+# _architecture_for() — GFX Version primary, product-name substring fallback
 # --------------------------------------------------------------------------
+
+
+def test_architecture_for_prefers_real_gfx_version():
+    # gfx1201 on an "AMD Radeon RX 9070 XT" — the exact real-hardware pairing
+    # captured from rocm-smi --json on an actual RX 9070 XT (RDNA4).
+    assert _architecture_for("AMD Radeon RX 9070 XT", "gfx1201") == "rdna4"
+
+
+@pytest.mark.parametrize(
+    "gfx_version,expected",
+    [
+        ("gfx1201", "rdna4"),
+        ("gfx1100", "rdna3"),
+        ("gfx1030", "rdna2"),
+        ("gfx942", "cdna3"),
+        ("gfx90a", "cdna2"),
+        ("gfx908", "cdna"),
+        ("GFX1201", "rdna4"),  # case-insensitive, same casing-variance concern as field names
+    ],
+)
+def test_architecture_for_known_gfx_versions(gfx_version, expected):
+    assert _architecture_for("some model", gfx_version) == expected
 
 
 @pytest.mark.parametrize(
@@ -183,16 +236,24 @@ def test_lookup_is_case_insensitive():
         ("Instinct MI300X", "cdna3"),
         ("Instinct MI250X", "cdna2"),
         ("Instinct MI100", "cdna"),
+        ("Radeon RX 9070 XT", "rdna4"),
         ("Radeon RX 7900 XT", "rdna3"),
         ("Radeon RX 6800", "rdna2"),
     ],
 )
-def test_architecture_for_known_models(model, expected):
-    assert _architecture_for(model) == expected
+def test_architecture_for_falls_back_to_model_name_when_no_gfx_version(model, expected):
+    assert _architecture_for(model, None) == expected
 
 
-def test_architecture_for_unknown_model_is_labeled_not_guessed():
-    result = _architecture_for("Some Future GPU 9000")
+def test_architecture_for_unrecognized_gfx_version_is_labeled_not_guessed():
+    result = _architecture_for("Some Future GPU 9000", "gfx9999")
+    assert "unknown" in result
+    assert "gfx9999" in result
+    assert "Some Future GPU 9000" in result
+
+
+def test_architecture_for_unknown_model_and_no_gfx_version_is_labeled_not_guessed():
+    result = _architecture_for("Some Future GPU 9000", None)
     assert "unknown" in result
     assert "Some Future GPU 9000" in result
 
@@ -304,3 +365,28 @@ def test_discover_raises_on_malformed_card_entry():
     with patch("app.discovery.rocm._run_show_query", return_value=malformed):
         with pytest.raises(DiscoveryError, match="unexpected rocm-smi JSON shape"):
             RocmDiscoveryAdapter().discover()
+
+
+# --------------------------------------------------------------------------
+# Real hardware regression — see the module docstring and the constants above
+# --------------------------------------------------------------------------
+
+
+def test_discover_matches_real_rx9070xt_hardware():
+    with (
+        patch("app.discovery.rocm._run_show_query", return_value=_REAL_RX9070XT_SHOW_JSON),
+        patch("app.discovery.rocm._run_driver_version_query", return_value=_REAL_DRIVER_VERSION_JSON),
+    ):
+        target = RocmDiscoveryAdapter().discover()
+
+    assert target.vendor == "amd"
+    assert target.model == "AMD Radeon RX 9070 XT"
+    assert target.architecture == "rdna4"  # resolved from real GFX Version "gfx1201"
+    assert target.capacity_units_total == 1
+    assert target.memory_gb_per_device == pytest.approx(17095983104 / 1024**3, abs=0.1)
+    assert target.observed_gpu_utilization_pct == 0.0
+    assert target.observed_memory_utilization_pct == pytest.approx(
+        291524608 / 17095983104 * 100, abs=0.1
+    )
+    assert "7.0.0" in target.notes  # driver version, best-effort-extracted from "7.0.0-30-generic"
+    assert "0x4fbbc7e605b44800" in target.notes  # unique id

@@ -196,14 +196,17 @@ rocm-smi --showproductname --showuniqueid --showmeminfo vram --showuse --json
 | Memory utilization | `observed_memory_utilization_pct` | **derived**, not directly reported — `VRAM Total Used Memory (B)` / `VRAM Total Memory (B)` per device, then averaged; unlike NVIDIA's adapter, rocm-smi's queried fields here don't include a ready-made memory-utilization percentage |
 | Free/available VRAM | in `notes` (free text), per device | same treatment as NVIDIA's free-memory figures — no memory-size-based capacity field exists in `ComputeTarget` to put it in |
 
-`architecture` is a best-effort substring match against known AMD product
-names (`api/app/discovery/rocm.py::_architecture_for` — e.g. any model
-containing `"mi300"` → `cdna3`, `"rx 7"` → `rdna3`); an unrecognized model is
-labeled `"unknown (rocm-smi doesn't report a compute-capability equivalent
-for '<model>')"` rather than guessed. Unlike NVIDIA's CUDA `compute_cap`
-field, rocm-smi has no equivalent structured field to key this off of at
-all — this mapping is inherently narrower and more likely to say "unknown"
-for a model it hasn't seen yet.
+`architecture` primarily keys off rocm-smi's own `GFX Version` field (e.g.
+`"gfx1201"`) — the real ROCm equivalent of CUDA's `compute_cap`, confirmed
+present in real `--showproductname --json` output (see "Verified against
+real hardware" below), even though it wasn't documented anywhere I could
+find before actually running this against a real GPU. `_architecture_for`
+(`api/app/discovery/rocm.py`) maps known `gfx*` targets to a codename (e.g.
+`gfx1201` → `rdna4`, `gfx942` → `cdna3`), falling back to a product-name
+substring match (`"rx 7"` → `rdna3`, etc.) only if `GFX Version` is somehow
+absent, and to an explicit `"unknown"` label — naming whichever signal it
+did have, model and/or gfx version — rather than guessing, if neither
+resolves it.
 
 **rocm-smi's JSON output shape is not as stable as nvidia-smi's CSV.** Its
 key names and casing have varied across ROCm releases in the wild (e.g.
@@ -220,17 +223,37 @@ Same placeholder conventions as NVIDIA's adapter apply: `supported_precisions`
 is always `[]`, `price_per_hr_per_unit` is always a zero-value/zero-confidence
 placeholder, `interconnect` is always `"not probed"`, `tier` is always
 `"lab"`, and heterogeneous multi-model machines only get the first device's
-model/memory/architecture reflected (with an explicit note). This adapter is
-**not yet tested against real AMD hardware** — only against hand-built JSON
-fixtures matching rocm-smi's documented output shape
-(`api/tests/test_discovery_rocm.py`); if you have a ROCm machine and hit a
-shape this doesn't handle, that's exactly the gap the case-insensitive
-lookup and the `DiscoveryError` message are meant to surface quickly rather
-than silently mis-parsing.
+model/memory/architecture reflected (with an explicit note).
 
-No real benchmark path (`forgeway bench` equivalent) exists for ROCm yet —
-see [`docs/benchmarking.md`](benchmarking.md)'s "Scope" section and
-`ROADMAP.md`.
+### Verified against real hardware
+
+Unlike when this adapter was first written, it has now been run against a
+real machine: an **AMD Radeon RX 9070 XT** (RDNA4, `gfx1201`) over SSH.
+Real `rocm-smi --json` output confirmed every field name this adapter
+expects (`Card Series`, `VRAM Total Memory (B)`, `VRAM Total Used Memory
+(B)`, `GPU use (%)`, `Unique ID`, `GFX Version`) — including the exact
+capitalization already assumed — and the resulting `ComputeTarget` came back
+correct end-to-end (`forgeway discover` on that machine reports `amd — AMD
+Radeon RX 9070 XT`, `15.9 GB`, `architecture: rdna4`). The `GFX Version`
+field's presence, and the fix to key architecture off it instead of a
+product-name guess, both came directly out of this real run — see
+`api/tests/test_discovery_rocm.py::test_discover_matches_real_rx9070xt_hardware`,
+which now regression-tests against that machine's actual captured JSON, not
+just a hand-built fixture. rocm-smi also emits a `WARNING:` line (e.g. about
+a GPU being in a low-power state) — confirmed to land on stderr, never
+stdout, so it doesn't interfere with this adapter's JSON parsing.
+
+This is one real GPU on one ROCm version, not exhaustive coverage — a
+different card, driver, or ROCm release could still expose a field-naming
+variant this adapter's case-insensitive lookup doesn't yet handle. If you
+hit that, the `DiscoveryError` message includes the raw per-card fields it
+saw, which is what's needed to extend `_lookup()`'s field-name list.
+
+A real benchmark path (`forgeway bench` equivalent) also now exists for
+ROCm — see [`docs/benchmarking.md`](benchmarking.md#gpu-vendor-dispatch) —
+though only its GPU telemetry sampler has been verified against real
+hardware so far, not a full `vllm bench latency` run (vLLM's ROCm build
+wasn't installed on the test machine).
 
 ## Failure behavior
 

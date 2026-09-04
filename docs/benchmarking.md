@@ -15,11 +15,16 @@ $ forgeway bench \
 
 ## Scope (v0.1)
 
-- **Hardware:** local NVIDIA CUDA systems only (reuses
-  [`forgeway discover`](discovery.md)'s `NvidiaDiscoveryAdapter` — see that
-  doc for supported-platform details).
+- **Hardware:** local NVIDIA CUDA systems (reuses [`forgeway
+  discover`](discovery.md)'s `NvidiaDiscoveryAdapter`) and local AMD ROCm
+  systems (reuses its `RocmDiscoveryAdapter`) — see that doc for
+  supported-platform details. `forgeway bench` uses whichever
+  `forgeway discover` finds first to pick both the compute target and the
+  matching GPU telemetry sampler (`nvidia-smi` or `rocm-smi` — see "GPU
+  vendor dispatch" below).
 - **Runtime:** [vLLM](https://github.com/vllm-project/vllm) only, via its
-  `vllm bench latency` subcommand.
+  `vllm bench latency` subcommand — the command itself is identical on
+  either vendor; only the *install* of vLLM differs (see Dependencies).
 - **Model:** any model `vllm bench latency --model <id>` can load, but this
   path is built and prioritized for
   **`meta-llama/Llama-3.1-8B-Instruct`**, as scoped for this milestone.
@@ -32,8 +37,40 @@ $ forgeway bench \
   [`docs/importing-results.md`](importing-results.md#tagging-evidence-with-a-real-workload-id).
 
 This is deliberately **one benchmark path**, not a generic framework — see
-`api/app/benchmark/__init__.py`. Adding AMD, another runtime, or a second
+`api/app/benchmark/__init__.py`. Adding another runtime or a second
 model-specific path is future work, not this one.
+
+## GPU vendor dispatch
+
+`vllm bench latency` runs identically regardless of vendor — PyTorch/HIP
+handle device dispatch underneath the benchmark itself, so
+`api/app/benchmark/vllm_runner.py` doesn't branch on vendor for the
+subprocess it launches. The only vendor-specific piece is **GPU telemetry
+sampling** (peak memory, average power) while the benchmark runs:
+`app/benchmark/gpu_sampler.py` (`nvidia-smi`) or
+`app/benchmark/rocm_gpu_sampler.py` (`rocm-smi`), selected by
+`run_vllm_bench_latency`'s `gpu_vendor` parameter — `forgeway bench` sets it
+automatically from whatever `forgeway discover` found
+(`ComputeTarget.vendor`). `PerformanceEvidence`'s memory/power metric
+`source` strings name whichever tool actually produced the sample
+(`api/app/benchmark/evidence.py::_TELEMETRY_TOOL_BY_VENDOR`).
+
+**The ROCm telemetry sampler is now verified against real hardware; the
+`vllm bench latency` run itself is not.** `rocm_gpu_sampler.sample_gpu_once()`
+was run live over SSH against a real AMD Radeon RX 9070 XT and returned a
+real reading (`GpuSample(power_draw_w=10.0, memory_used_mb=301.6...)`),
+confirming both the `rocm-smi -d <index> --showmeminfo vram --showpower
+--json` query and the field names it parses
+(`Average Graphics Package Power (W)`, `VRAM Total Used Memory (B)`)
+against a live device — the same run also validated the ROCm discovery
+adapter (`docs/discovery.md#verified-against-real-hardware`).
+`api/tests/test_benchmark_rocm_gpu_sampler.py` covers this in the regular
+suite. What's **still unverified**: an actual `vllm bench latency` run on
+ROCm — the test machine didn't have vLLM's ROCm build installed (see
+Dependencies below), so `run_vllm_bench_latency(..., gpu_vendor="amd")`'s
+subprocess orchestration itself, and the parser's assumptions about vLLM's
+output shape, remain "matches the documented shape" rather than "confirmed
+live," same caveat as always for that half of the pipeline.
 
 ## Why `vllm bench latency`, and what it does and doesn't measure
 
@@ -61,8 +98,8 @@ the human-readable CLI output and this doc call it out explicitly.
 | P50 / P99 | `p50_latency_ms`, `p99_latency_ms` | vLLM's own percentiles, when it reports them (requested via `--percentiles 50,99`) |
 | Output token throughput | `output_token_throughput_tokens_per_s` | **derived**, not measured directly: `(output_tokens × concurrency) ÷ measured avg latency` — the same arithmetic any latency benchmark uses to turn a stopwatch time into a rate |
 | Request throughput | `request_throughput_requests_per_s` | derived the same way: `concurrency ÷ measured avg latency` |
-| GPU memory usage | `peak_gpu_memory_used_mb` | the peak of real `nvidia-smi` samples polled once per second while the benchmark subprocess runs (not a single before/after snapshot) |
-| Average power | `avg_gpu_power_draw_w` | the mean of those same real `nvidia-smi` power-draw samples — a genuine time-averaged figure, not a two-point guess. Omitted entirely if the driver reports `N/A` for power (common on some GPU/driver combinations without power-management support) |
+| GPU memory usage | `peak_gpu_memory_used_mb` | the peak of real `nvidia-smi`/`rocm-smi` samples (by vendor) polled once per second while the benchmark subprocess runs (not a single before/after snapshot) |
+| Average power | `avg_gpu_power_draw_w` | the mean of those same real power-draw samples — a genuine time-averaged figure, not a two-point guess. Omitted entirely if the driver/tool reports no value for power (common on some GPU/driver combinations without power-management support) |
 | TTFT | *not captured* | see above — not measurable by this benchmark path |
 | GPU model, driver, etc. | via `compute_target_id` | cross-reference the `ComputeTarget` from `forgeway discover` — not duplicated into `PerformanceEvidence` itself |
 
@@ -76,16 +113,26 @@ weakest-link convention used everywhere else in Forgeway.
 
 ## Dependencies
 
-- An NVIDIA GPU with enough VRAM for the model — **Llama 3.1 8B Instruct
-  needs roughly 16GB+ VRAM** for its weights in bf16/fp16 plus KV cache
-  headroom; less with quantization, but this runner doesn't configure
-  quantization for you.
-- NVIDIA driver + `nvidia-smi` on `PATH` (same requirement as
-  `forgeway discover`).
-- [vLLM](https://pypi.org/project/vllm/) installed in the same environment
-  as `forgeway` (`pip install vllm`) — a large package with its own CUDA
-  and PyTorch requirements; see vLLM's own installation docs for your
-  platform.
+- A GPU with enough VRAM for the model — **Llama 3.1 8B Instruct needs
+  roughly 16GB+ VRAM** for its weights in bf16/fp16 plus KV cache headroom;
+  less with quantization, but this runner doesn't configure quantization
+  for you.
+- **NVIDIA:** the NVIDIA driver + `nvidia-smi` on `PATH` (same requirement
+  as `forgeway discover`), and [vLLM](https://pypi.org/project/vllm/)
+  installed the standard way (`pip install vllm`) — a large package with
+  its own CUDA/PyTorch requirements, but a single `pip install`.
+- **AMD ROCm:** the ROCm stack + `rocm-smi` on `PATH` (same requirement as
+  `forgeway discover`'s ROCm adapter), and **a ROCm-capable vLLM build —
+  materially more involved than the NVIDIA path.** `pip install vllm`
+  installs vLLM's CUDA build; it will not run on an AMD GPU. Getting `vllm
+  bench latency` actually working on ROCm requires either vLLM's published
+  ROCm Docker image or building vLLM from source against a ROCm-enabled
+  PyTorch — see [vLLM's ROCm installation
+  docs](https://docs.vllm.ai/en/latest/getting_started/installation/gpu.html)
+  for the current instructions, which change more often than this file
+  does. `forgeway bench` itself doesn't attempt to install or detect any of
+  this for you; `is_vllm_available()` only checks that a `vllm` binary is
+  on `PATH` at all, not that it was built for the GPU actually present.
 - **A Hugging Face account with access to the gated Llama 3.1 license**,
   and either `huggingface-cli login` run once or an `HF_TOKEN` environment
   variable set. `meta-llama/Llama-3.1-8B-Instruct` will not download
@@ -175,8 +222,8 @@ Override the directory with the `FORGEWAY_BENCH_DIR` environment variable.
 ## Reproducibility caveats
 
 - **This runner's JSON parsing has not been verified against a live vLLM
-  installation.** There is no CUDA GPU in this repository's development
-  environment, so `api/app/benchmark/parser.py`'s key names
+  installation.** There is no CUDA or ROCm GPU in this repository's
+  development environment, so `api/app/benchmark/parser.py`'s key names
   (`avg_latency`, `percentiles`) reflect vLLM's documented
   `vllm bench latency --output-json` shape as best known at the time this
   was written, not a shape confirmed by actually running it. The parser is
@@ -184,6 +231,12 @@ Override the directory with the `FORGEWAY_BENCH_DIR` environment variable.
   being omitted (or, for the one truly required field, a clear
   `BenchmarkError`), never a fabricated value — but a full schema mismatch
   in a future vLLM release is a real, plausible risk.
+- **The ROCm telemetry sampler (`rocm_gpu_sampler.py`) has not been run
+  against real `rocm-smi` output either** — its field names
+  (`VRAM Total Used Memory (B)`, `Average Graphics Package Power (W)`) come
+  from rocm-smi's own source, not a live run; see
+  `docs/discovery.md#amd-rocm-rocm-smi` for the same key-casing-variance
+  caveat that applies here too.
 - **This is exactly why the raw vLLM output is saved alongside the parsed
   record** (`<run_id>.raw_vllm_output.json`) — if a real run's numbers look
   wrong, or `forgeway bench` fails to parse something, that file is the

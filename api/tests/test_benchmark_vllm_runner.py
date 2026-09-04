@@ -153,6 +153,42 @@ def test_run_raises_when_no_output_file_produced():
             run_vllm_bench_latency(model="m", input_tokens=1, output_tokens=1, concurrency=1)
 
 
+def test_run_uses_rocm_sampler_when_gpu_vendor_is_amd():
+    fake_sample = GpuSample(power_draw_w=300.0, memory_used_mb=40000.0)
+    fake_popen = _fake_popen_class(poll_sequence=[0], output_json={"avg_latency": 0.5})
+
+    with (
+        patch("app.benchmark.vllm_runner.shutil.which", return_value="/usr/local/bin/vllm"),
+        patch("app.benchmark.vllm_runner.subprocess.Popen", fake_popen),
+        patch("app.benchmark.vllm_runner.sample_gpu_once_rocm", return_value=fake_sample) as mock_rocm,
+        patch("app.benchmark.vllm_runner.sample_gpu_once") as mock_nvidia,
+        patch("app.benchmark.vllm_runner.time.sleep"),
+    ):
+        result = run_vllm_bench_latency(
+            model="m", input_tokens=1, output_tokens=1, concurrency=1, gpu_vendor="amd"
+        )
+
+    assert result.gpu_samples == [fake_sample]
+    mock_rocm.assert_called()
+    mock_nvidia.assert_not_called()
+
+
+def test_run_uses_nvidia_sampler_by_default():
+    fake_popen = _fake_popen_class(poll_sequence=[0], output_json={"avg_latency": 0.5})
+
+    with (
+        patch("app.benchmark.vllm_runner.shutil.which", return_value="/usr/local/bin/vllm"),
+        patch("app.benchmark.vllm_runner.subprocess.Popen", fake_popen),
+        patch("app.benchmark.vllm_runner.sample_gpu_once", return_value=None) as mock_nvidia,
+        patch("app.benchmark.vllm_runner.sample_gpu_once_rocm") as mock_rocm,
+        patch("app.benchmark.vllm_runner.time.sleep"),
+    ):
+        run_vllm_bench_latency(model="m", input_tokens=1, output_tokens=1, concurrency=1)
+
+    mock_nvidia.assert_called()
+    mock_rocm.assert_not_called()
+
+
 def test_run_raises_and_kills_process_on_timeout():
     fake_popen = _fake_popen_class(poll_sequence=[None] * 10)
     killed = {"called": False}

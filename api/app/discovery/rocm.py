@@ -7,13 +7,15 @@ rocm-smi's own output shape has nothing in common with nvidia-smi's.
 
 rocm-smi's `--json` output is not a stable, long-documented schema the way
 nvidia-smi's `--query-gpu` CSV is — its key names and casing have varied
-across ROCm releases in the wild (e.g. "Card series" vs "Card Series"), and
-there is no public compute-capability-equivalent field for architecture the
-way CUDA's compute_cap is. This adapter compensates by doing case-insensitive
-field lookups and, for architecture, a best-effort substring match against
-known AMD product names — falling back to an explicit "unknown" label rather
-than guessing, same convention as nvidia.py's compute-cap mapping. See
-docs/discovery.md for what's captured and what's a placeholder.
+across ROCm releases in the wild (e.g. "Card series" vs "Card Series"). This
+adapter compensates by doing case-insensitive field lookups. Architecture
+resolution primarily keys off `--showproductname`'s "GFX Version" field
+(e.g. "gfx1201"), the real ROCm equivalent of CUDA's compute_cap — verified
+present in real `rocm-smi --json` output against a real AMD Radeon RX 9070
+XT (gfx1201, RDNA4) — falling back to a product-name substring match when
+it's absent, and an explicit "unknown" label rather than a guess when
+neither resolves it. See docs/discovery.md for what's captured and what's a
+placeholder.
 """
 from __future__ import annotations
 
@@ -35,25 +37,53 @@ _CARD_KEY_RE = re.compile(r"^card\d+$", re.IGNORECASE)
 
 _VERSION_RE = re.compile(r"\d+(?:\.\d+){1,3}")
 
-# Best-effort product-name substring -> architecture codename mapping. Not
-# exhaustive — an unrecognized model falls back to a labeled "unknown"
-# string rather than a guess. See module docstring and docs/discovery.md.
+# Primary signal: rocm-smi's own "GFX Version" field (e.g. "gfx1201"), the
+# real ROCm analog of CUDA's compute_cap — verified present in real
+# --showproductname --json output (see module docstring). Not exhaustive —
+# an unrecognized gfx target falls through to the product-name substring
+# map below, then to a labeled "unknown" string, rather than a guess.
+_ARCHITECTURE_BY_GFX_VERSION: dict[str, str] = {
+    "gfx1201": "rdna4",
+    "gfx1200": "rdna4",
+    "gfx1103": "rdna3",
+    "gfx1102": "rdna3",
+    "gfx1101": "rdna3",
+    "gfx1100": "rdna3",
+    "gfx1032": "rdna2",
+    "gfx1031": "rdna2",
+    "gfx1030": "rdna2",
+    "gfx942": "cdna3",
+    "gfx90a": "cdna2",
+    "gfx908": "cdna",
+}
+
+# Fallback when rocm-smi doesn't report GFX Version at all (older ROCm?) —
+# best-effort product-name substring match, same convention as before.
 _ARCHITECTURE_BY_MODEL_SUBSTRING: list[tuple[str, str]] = [
     ("mi300", "cdna3"),
     ("mi250", "cdna2"),
     ("mi210", "cdna2"),
     ("mi100", "cdna"),
+    ("rx 9", "rdna4"),
     ("rx 7", "rdna3"),
     ("rx 6", "rdna2"),
 ]
 
 
-def _architecture_for(model: str) -> str:
+def _architecture_for(model: str, gfx_version: Optional[str] = None) -> str:
+    if gfx_version:
+        arch = _ARCHITECTURE_BY_GFX_VERSION.get(gfx_version.lower())
+        if arch is not None:
+            return arch
+
     lowered = model.lower()
     for substring, arch in _ARCHITECTURE_BY_MODEL_SUBSTRING:
         if substring in lowered:
             return arch
-    return f"unknown (rocm-smi doesn't report a compute-capability equivalent for {model!r})"
+
+    if gfx_version:
+        return f"unknown (rocm-smi reported GFX Version {gfx_version!r} for {model!r}, not yet in this adapter's mapping)"
+    return f"unknown (rocm-smi didn't report a GFX Version for {model!r}, and its name doesn't match a known product)"
 
 
 def _run_show_query(timeout: float = 5.0) -> str:
@@ -177,6 +207,7 @@ class RocmDiscoveryAdapter(DiscoveryAdapter):
                     "vram_used_gb": vram_used_gb,
                     "gpu_use_pct": _parse_float(_lookup(fields, "GPU use (%)")),
                     "unique_id": _lookup(fields, "Unique ID") or "",
+                    "gfx_version": _lookup(fields, "GFX Version"),
                 }
             )
 
@@ -230,7 +261,7 @@ class RocmDiscoveryAdapter(DiscoveryAdapter):
             model=first["model"],
             tier="lab",
             location=f"local ({hostname})",
-            architecture=_architecture_for(first["model"]),
+            architecture=_architecture_for(first["model"], first["gfx_version"]),
             memory_gb_per_device=round(first["vram_total_gb"], 1),
             interconnect="not probed",
             supported_precisions=[],

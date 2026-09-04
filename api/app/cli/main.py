@@ -167,6 +167,7 @@ def cmd_bench(args: argparse.Namespace) -> int:
             warmup_iterations=args.warmup_iterations,
             timeout_s=args.timeout_s,
             device_index=args.device_index,
+            gpu_vendor=target.vendor,
         )
         parsed = parse_vllm_latency_output(raw.raw_json)
     except BenchmarkError as e:

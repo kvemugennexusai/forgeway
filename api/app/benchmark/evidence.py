@@ -56,6 +56,12 @@ _LATENCY_CONFIDENCE = 95.0
 _MEMORY_CONFIDENCE = 90.0
 _POWER_CONFIDENCE = 85.0
 
+#: Which telemetry tool actually produced the GPU samples, keyed by
+#: ComputeTarget.vendor — see app.benchmark.gpu_sampler /
+#: app.benchmark.rocm_gpu_sampler. Falls back to the vendor string itself
+#: for a vendor with no sampler yet, rather than mislabeling the source.
+_TELEMETRY_TOOL_BY_VENDOR: dict[str, str] = {"nvidia": "nvidia-smi", "amd": "rocm-smi"}
+
 
 def build_performance_evidence(
     *,
@@ -71,6 +77,7 @@ def build_performance_evidence(
 ) -> PerformanceEvidence:
     metrics: dict[str, Metric] = {}
     source = f"vllm bench latency, model={model}"
+    telemetry_tool = _TELEMETRY_TOOL_BY_VENDOR.get(compute_target.vendor, compute_target.vendor)
 
     metrics["end_to_end_latency_ms"] = Metric(
         value=round(parsed.avg_latency_s * 1000, 2),
@@ -116,7 +123,7 @@ def build_performance_evidence(
             value=round(max(memory_samples), 1),
             confidence=_MEMORY_CONFIDENCE,
             provenance="MEASURED",
-            source=f"nvidia-smi, sampled during the run (n={len(memory_samples)})",
+            source=f"{telemetry_tool}, sampled during the run (n={len(memory_samples)})",
         )
 
     power_samples = [s.power_draw_w for s in gpu_samples if s.power_draw_w is not None]
@@ -125,7 +132,7 @@ def build_performance_evidence(
             value=round(sum(power_samples) / len(power_samples), 1),
             confidence=_POWER_CONFIDENCE,
             provenance="MEASURED",
-            source=f"nvidia-smi, averaged over samples during the run (n={len(power_samples)})",
+            source=f"{telemetry_tool}, averaged over samples during the run (n={len(power_samples)})",
         )
 
     confidence = min(m.confidence for m in metrics.values())

@@ -72,14 +72,19 @@ they need a real NVIDIA GPU to produce) — `api/tests/test_discovery.py`
 and `api/tests/test_cli.py` prove the actual field mapping and CLI
 behavior against mocked `nvidia-smi` output.
 
-## Supported platform (v0.1 scope)
+## Supported platforms
 
-**Local NVIDIA CUDA-capable systems only** — one machine, discovered by
-running on it directly. Explicitly out of scope for this pass: AMD, Intel,
-AWS Trainium/Inferentia, Jetson-specific behavior, and any cloud/remote
-discovery (querying a fleet, an API, or a cluster). See
-[`docs/architecture.md`](architecture.md) for
-where those fit in the longer-term roadmap.
+**Local NVIDIA CUDA-capable and AMD ROCm-capable systems** — one machine,
+discovered by running on it directly. `forgeway discover` tries each
+adapter's `is_available()` in order (NVIDIA, then AMD ROCm — see
+`api/app/cli/main.py`'s `ADAPTERS` list) and uses the first one whose
+tooling is present. Explicitly out of scope for this pass: Intel, AWS
+Trainium/Inferentia, Jetson-specific behavior (see `ROADMAP.md`'s "Later"
+section — Jetson boards are integrated SoCs and need their own
+`tegrastats`/`jtop`-based adapter, not a variant of either adapter here),
+and any cloud/remote discovery (querying a fleet, an API, or a cluster).
+See [`docs/architecture.md`](architecture.md) for where those fit in the
+longer-term roadmap.
 
 ## Required tooling
 
@@ -163,14 +168,79 @@ X.Y)"` rather than guessed.
   [`docs/importing-results.md`](importing-results.md)) — neither is a live,
   continuously-refreshed inventory. See `docs/architecture.md`.
 
+## AMD ROCm (`rocm-smi`)
+
+The second discovery adapter (`api/app/discovery/rocm.py`), added following
+[`docs/adding-an-accelerator.md`](adding-an-accelerator.md)'s extension seam
+— `forgeway discover` tries it if `nvidia-smi` isn't found.
+
+```bash
+forgeway discover   # tries NVIDIA first, then AMD ROCm
+```
+
+Required tooling: the `rocm-smi` CLI, on `PATH` (ships with the ROCm stack —
+no separate install). Queried as:
+
+```
+rocm-smi --showproductname --showuniqueid --showmeminfo vram --showuse --json
+```
+
+| Requested | Captured as | Notes |
+|---|---|---|
+| Card model | `model` | from rocm-smi's `Card series` field |
+| Number of devices | `capacity_units_total` / `accelerator_count` | count of `cardN` entries rocm-smi reports |
+| VRAM per device | `memory_gb_per_device` | from `VRAM Total Memory (B)`, first device |
+| Driver version | in `notes` (free text) | best-effort, from a separate `rocm-smi --showdriverversion --json` call — never fatal if unparseable |
+| Unique ID | in `notes` (free text), first device | from `Unique ID`, when reported |
+| Current GPU utilization | `observed_gpu_utilization_pct` | averaged across devices when there's more than one, directly from `GPU use (%)` |
+| Memory utilization | `observed_memory_utilization_pct` | **derived**, not directly reported — `VRAM Total Used Memory (B)` / `VRAM Total Memory (B)` per device, then averaged; unlike NVIDIA's adapter, rocm-smi's queried fields here don't include a ready-made memory-utilization percentage |
+| Free/available VRAM | in `notes` (free text), per device | same treatment as NVIDIA's free-memory figures — no memory-size-based capacity field exists in `ComputeTarget` to put it in |
+
+`architecture` is a best-effort substring match against known AMD product
+names (`api/app/discovery/rocm.py::_architecture_for` — e.g. any model
+containing `"mi300"` → `cdna3`, `"rx 7"` → `rdna3`); an unrecognized model is
+labeled `"unknown (rocm-smi doesn't report a compute-capability equivalent
+for '<model>')"` rather than guessed. Unlike NVIDIA's CUDA `compute_cap`
+field, rocm-smi has no equivalent structured field to key this off of at
+all — this mapping is inherently narrower and more likely to say "unknown"
+for a model it hasn't seen yet.
+
+**rocm-smi's JSON output shape is not as stable as nvidia-smi's CSV.** Its
+key names and casing have varied across ROCm releases in the wild (e.g.
+`"Card series"` vs `"Card Series"`) and there's no single documented schema
+version the way `nvidia-smi --query-gpu`'s CSV fields are. This adapter does
+case-insensitive field lookups (`_lookup()`) to absorb casing differences,
+and raises a clean `DiscoveryError` — including the raw per-card fields it
+saw — if a required field (`Card series`, `VRAM Total Memory (B)`) is
+missing entirely, rather than crashing with a raw `KeyError`. If you hit
+that on real AMD hardware, the error message has what's needed to extend
+`_lookup()`'s field-name list for your ROCm version.
+
+Same placeholder conventions as NVIDIA's adapter apply: `supported_precisions`
+is always `[]`, `price_per_hr_per_unit` is always a zero-value/zero-confidence
+placeholder, `interconnect` is always `"not probed"`, `tier` is always
+`"lab"`, and heterogeneous multi-model machines only get the first device's
+model/memory/architecture reflected (with an explicit note). This adapter is
+**not yet tested against real AMD hardware** — only against hand-built JSON
+fixtures matching rocm-smi's documented output shape
+(`api/tests/test_discovery_rocm.py`); if you have a ROCm machine and hit a
+shape this doesn't handle, that's exactly the gap the case-insensitive
+lookup and the `DiscoveryError` message are meant to surface quickly rather
+than silently mis-parsing.
+
+No real benchmark path (`forgeway bench` equivalent) exists for ROCm yet —
+see [`docs/benchmarking.md`](benchmarking.md)'s "Scope" section and
+`ROADMAP.md`.
+
 ## Failure behavior
 
-If `nvidia-smi` isn't on `PATH` (no NVIDIA driver installed, or running
-somewhere without GPU passthrough), `forgeway discover` fails cleanly:
+If neither `nvidia-smi` nor `rocm-smi` is on `PATH` (no supported driver
+installed, or running somewhere without GPU passthrough), `forgeway
+discover` fails cleanly:
 
 ```
 $ forgeway discover
-forgeway discover: No supported accelerator was detected on this machine. Checked: NVIDIA. See docs/discovery.md for what's supported.
+forgeway discover: No supported accelerator was detected on this machine. Checked: NVIDIA, AMD ROCm. See docs/discovery.md for what's supported.
 $ echo $?
 1
 ```
@@ -179,5 +249,5 @@ No traceback, ever — a `DiscoveryError` is the only expected failure mode
 and is always caught and reported as a single line to stderr with exit
 code 1. Any other unexpected exception is also caught at the top level of
 the CLI (`app/cli/main.py::main`) and reported the same way, as a safety
-net — it should never happen, but a bug in this adapter still shouldn't
+net — it should never happen, but a bug in an adapter still shouldn't
 produce an unreadable stack trace for someone just trying to run the tool.

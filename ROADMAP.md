@@ -23,13 +23,24 @@ boundary.
   simulation (six presets), and `/import` — upload a real
   discovery/benchmark result and use it in analysis, browser-local only
   ([`docs/importing-results.md`](docs/importing-results.md)).
+- AMD ROCm local hardware discovery (`forgeway discover`, via `rocm-smi`
+  — [`docs/discovery.md`](docs/discovery.md#amd-rocm-rocm-smi)), the second
+  `DiscoveryAdapter` ([`docs/adding-an-accelerator.md`](docs/adding-an-accelerator.md)).
+  **Not yet verified against real AMD hardware** — only against hand-built
+  fixtures matching `rocm-smi`'s documented output shape, since rocm-smi's
+  JSON key naming/casing isn't as stable across ROCm releases as
+  `nvidia-smi`'s CSV schema. First real run against a ROCm machine may
+  surface a field-name variant the adapter's case-insensitive lookup
+  doesn't yet cover.
 
 ## Next
 
-- **AMD ROCm discovery adapter** — the second `DiscoveryAdapter`
-  ([`docs/adding-an-accelerator.md`](docs/adding-an-accelerator.md)).
-  Likely followed by a matching benchmark path once a runtime target is
-  chosen (`vllm` on ROCm, or a ROCm-native tool).
+- **A ROCm benchmark path** — the AMD equivalent of `forgeway bench`, once
+  a runtime target is chosen (`vllm` on ROCm, or a ROCm-native tool). See
+  [`docs/benchmarking.md`](docs/benchmarking.md)'s "Scope" section for the
+  files this touches (`app/benchmark/vllm_runner.py`, `app/benchmark/evidence.py`).
+- **Verify the ROCm discovery adapter on real AMD hardware** and fix
+  whatever field-shape surprises come up — see the v0.1 note above.
 - **Additional workloads** — more of the fixture library
   (`api/app/fixtures/workloads.json`) covering other model families and
   workload classes, so the decision engine's feasibility/scoring logic is
@@ -52,6 +63,15 @@ boundary.
 - A second discovery/benchmark vendor beyond AMD (Intel, cloud-specific
   accelerators), once the ROCm adapter has proven the extension seam in
   practice.
+- **Jetson discovery adapter (`tegrastats`/`jtop`)** — Jetson boards are
+  integrated SoCs, not discrete GPUs; `nvidia-smi` doesn't work on them the
+  way it does on datacenter/desktop NVIDIA hardware (see
+  `api/app/discovery/nvidia.py`'s own scope note), so this needs its own
+  adapter against a different tool and a much narrower set of honestly
+  reportable fields — not a variant of the existing NVIDIA adapter. Also a
+  different workload class (small-footprint edge inference) than this
+  demo's current datacenter LLM-serving fixtures, so it likely wants its
+  own fixture workload(s) to be meaningful, not just a new discovery path.
 
 ## Not planned
 

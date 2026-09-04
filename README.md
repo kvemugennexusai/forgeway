@@ -38,13 +38,16 @@ guessing.
 
 ### What hardware is supported today?
 
-**Local NVIDIA CUDA-capable GPUs only**, via `nvidia-smi` — for both discovery
-([`docs/discovery.md`](docs/discovery.md)) and benchmarking
-([`docs/benchmarking.md`](docs/benchmarking.md)). No AMD, Intel, or cloud-vendor discovery yet
-— AMD ROCm is next; see [`ROADMAP.md`](ROADMAP.md) and
-[`docs/adding-an-accelerator.md`](docs/adding-an-accelerator.md) for how that gets added. The
-decision engine itself is hardware-agnostic — it scores whatever `ComputeTarget`s it's given,
-real or fixture — the discovery/benchmark *adapters* are what's currently NVIDIA-only.
+**Local NVIDIA CUDA-capable GPUs** (via `nvidia-smi`) **and local AMD ROCm-capable GPUs** (via
+`rocm-smi`) for discovery ([`docs/discovery.md`](docs/discovery.md)); **NVIDIA only, so far, for
+benchmarking** ([`docs/benchmarking.md`](docs/benchmarking.md)) — a ROCm benchmark path is next.
+No Intel or cloud-vendor discovery yet, and the ROCm discovery adapter hasn't been run against
+real AMD hardware (only against hand-built fixtures matching `rocm-smi`'s documented output
+shape — see [`docs/discovery.md`](docs/discovery.md#amd-rocm-rocm-smi)); see
+[`ROADMAP.md`](ROADMAP.md) and [`docs/adding-an-accelerator.md`](docs/adding-an-accelerator.md)
+for how a new vendor gets added. The decision engine itself is hardware-agnostic — it scores
+whatever `ComputeTarget`s it's given, real or fixture — the discovery/benchmark *adapters* are
+what's vendor-specific.
 
 ### What is experimental / simulated?
 
@@ -53,14 +56,18 @@ real or fixture — the discovery/benchmark *adapters* are what's currently NVID
   ships as a JSON fixture (`api/app/fixtures/`), clearly labeled with its own provenance
   (`MEASURED` / `PUBLISHED` / `MODELED`). There are no real cloud/infrastructure integrations —
   Forgeway does not schedule, provision, or migrate anything.
-- **Discovery and benchmarking are real, but narrow**: one vendor (NVIDIA), one benchmark path
-  (`vllm bench latency`). Real output, limited scope — see the docs linked above for exactly
-  what's measured vs. estimated. Notably, that one benchmark path is **offline latency only**:
-  it does not measure time-to-first-token or true concurrent-request serving throughput — the
-  two numbers that matter most for a `realtime-inference` SLO, which is exactly the workload
+- **Discovery covers two vendors (NVIDIA, AMD); benchmarking covers one, one path**
+  (`vllm bench latency`, NVIDIA-only). Real output, limited scope — see the docs linked above for
+  exactly what's measured vs. estimated. Notably, that one benchmark path is **offline latency
+  only**: it does not measure time-to-first-token or true concurrent-request serving throughput —
+  the two numbers that matter most for a `realtime-inference` SLO, which is exactly the workload
   class this demo's flagship recommendation is about. See
   [`docs/benchmarking.md`](docs/benchmarking.md#why-vllm-bench-latency-and-what-it-does-and-doesnt-measure)
   before treating a `forgeway bench` number as representative of production serving latency.
+- **The AMD ROCm discovery adapter hasn't been run against real AMD hardware yet** — it's tested
+  against hand-built fixtures matching `rocm-smi`'s documented output shape, not verified
+  end-to-end on an actual ROCm machine. See
+  [`docs/discovery.md`](docs/discovery.md#amd-rocm-rocm-smi) for exactly what that means.
 - **Steps that require real NVIDIA hardware can't be verified on most machines.** `forgeway
   discover`, `forgeway bench`, and the "hardware found" half of `forgeway analyze` all fail
   cleanly (not silently) without an NVIDIA GPU — which is most contributors' and evaluators'
@@ -350,7 +357,8 @@ alongside `localhost`) as well as `http`-only, never a public/internet-routable 
 
 ## CLI: hardware discovery
 
-`forgeway discover` detects local NVIDIA CUDA hardware (via `nvidia-smi`) and prints it as a
+`forgeway discover` detects local NVIDIA CUDA hardware (via `nvidia-smi`) or local AMD ROCm
+hardware (via `rocm-smi`, tried if NVIDIA's tooling isn't found) and prints it as a
 `ComputeTarget` — the same schema the demo fixtures use, human-readable by default or as JSON
 with `--json`. Independent of the web demo above; see [`docs/discovery.md`](docs/discovery.md).
 Already available after the backend setup above (`pip install -r requirements.txt` registers the
@@ -464,8 +472,9 @@ per-workload `ObjectiveWeights` and `min_confidence_pct` that can change the ran
 recommendation outright; capacity-aware split placement that itself respects the confidence
 gate; six named scenario presets, each backend-owned and mutation-free, with a BEFORE/EVENT/
 AFTER comparison and an explicit change explanation; every route in the product spec,
-fixture-driven; one real hardware discovery adapter (`forgeway discover`, local NVIDIA GPUs via
-`nvidia-smi` — see [`docs/discovery.md`](docs/discovery.md)) and one real benchmark path
+fixture-driven; two real hardware discovery adapters (`forgeway discover`, local NVIDIA GPUs via
+`nvidia-smi` and local AMD GPUs via `rocm-smi` — see [`docs/discovery.md`](docs/discovery.md);
+the ROCm adapter is untested against real AMD hardware so far) and one real benchmark path
 (`forgeway bench`, `vllm bench latency`, `provenance: MEASURED` — see
 [`docs/benchmarking.md`](docs/benchmarking.md)); the placement engine's evidence path is
 unified across fixture data and any real, locally saved `forgeway bench` run for a matching

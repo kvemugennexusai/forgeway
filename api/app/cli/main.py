@@ -30,12 +30,13 @@ from app.core.schemas.v0_1 import PerformanceEvidence, PlacementDecision
 from app.data.loader import load_compute_targets
 from app.discovery.adapter import DiscoveryAdapter, DiscoveryError
 from app.discovery.nvidia import NvidiaDiscoveryAdapter
+from app.discovery.rocm import RocmDiscoveryAdapter
 from app.engine.decision import run_decision
 from app.models import Recommendation, ScenarioParams, ScenarioType
 
 #: Adapters to try, in order. Adding a vendor is adding one line here plus
 #: one new adapter class — see app/discovery/adapter.py.
-ADAPTERS: list[DiscoveryAdapter] = [NvidiaDiscoveryAdapter()]
+ADAPTERS: list[DiscoveryAdapter] = [NvidiaDiscoveryAdapter(), RocmDiscoveryAdapter()]
 
 
 def run_discovery(adapters: Optional[list[DiscoveryAdapter]] = None) -> ComputeTarget:

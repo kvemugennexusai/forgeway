@@ -42,13 +42,24 @@ guessing.
 `rocm-smi`), for both discovery ([`docs/discovery.md`](docs/discovery.md)) and benchmarking
 ([`docs/benchmarking.md`](docs/benchmarking.md)) — `vllm bench latency` runs identically on
 either vendor, with only GPU telemetry sampling (`nvidia-smi` vs. `rocm-smi`) actually
-vendor-specific. No Intel or cloud-vendor discovery yet. **ROCm discovery and GPU telemetry
-sampling have both been verified against a real AMD GPU** (a Radeon RX 9070 XT, over SSH — see
-[`docs/discovery.md`](docs/discovery.md#verified-against-real-hardware)); **an actual
-`vllm bench latency` run on ROCm has not** — that machine didn't have vLLM's ROCm build
-installed, which is a materially heavier install than NVIDIA's `pip install vllm` (see
-[`docs/benchmarking.md`](docs/benchmarking.md#gpu-vendor-dispatch)); see
-[`ROADMAP.md`](ROADMAP.md) and [`docs/adding-an-accelerator.md`](docs/adding-an-accelerator.md)
+vendor-specific. No Intel or cloud-vendor discovery yet.
+
+**Precise verification status of the AMD/ROCm side** (this is the one place in this README it's
+stated — see [`docs/discovery.md`](docs/discovery.md#verification-status) for the full detail,
+the five states used, and why they're worth being this exact about):
+
+- ROCm hardware discovery, including architecture resolution: **LIVE VERIFIED**, and its test
+  suite is **TESTED WITH CAPTURED REAL OUTPUT** — run against a real AMD Radeon RX 9070 XT over
+  SSH via the actual `forgeway discover` CLI.
+- The ROCm GPU telemetry sampler function `rocm_gpu_sampler.sample_gpu_once()`: **LIVE
+  VERIFIED**, but only as a one-off direct call, not through `forgeway bench` itself; its own
+  test suite is still hand-built fixtures, not captured real output.
+- `forgeway bench`'s ROCm dispatch path end-to-end, and an actual `vllm bench latency` run on
+  ROCm: **IMPLEMENTED BUT NOT LIVE VERIFIED** — the test machine didn't have vLLM's ROCm build
+  installed, a materially heavier install than NVIDIA's `pip install vllm` (see
+  [`docs/benchmarking.md`](docs/benchmarking.md#gpu-vendor-dispatch)).
+
+See [`ROADMAP.md`](ROADMAP.md) and [`docs/adding-an-accelerator.md`](docs/adding-an-accelerator.md)
 for how a new vendor gets added. The decision engine itself is hardware-agnostic — it scores
 whatever `ComputeTarget`s it's given, real or fixture — the discovery/benchmark *adapters* are
 what's vendor-specific.
@@ -68,15 +79,10 @@ what's vendor-specific.
   this demo's flagship recommendation is about. See
   [`docs/benchmarking.md`](docs/benchmarking.md#why-vllm-bench-latency-and-what-it-does-and-doesnt-measure)
   before treating a `forgeway bench` number as representative of production serving latency.
-- **ROCm discovery and GPU telemetry sampling are verified against a real AMD GPU** (a Radeon RX
-  9070 XT, RDNA4/`gfx1201`, over SSH) — real `rocm-smi --json` output confirmed every field name
-  this adapter expects, and surfaced a fix (architecture now resolves from rocm-smi's own `GFX
-  Version` field instead of guessing from the product name). **Actually running `vllm bench
-  latency` on ROCm remains unverified** — that machine didn't have vLLM's ROCm build installed,
-  which is materially more involved than NVIDIA's `pip install vllm` (see
-  [`docs/benchmarking.md`](docs/benchmarking.md#dependencies)). See
-  [`docs/discovery.md`](docs/discovery.md#verified-against-real-hardware) and
-  [`docs/benchmarking.md`](docs/benchmarking.md#gpu-vendor-dispatch) for the details.
+- **AMD/ROCm support is partially live-verified, not fully** — see "What hardware is supported
+  today?" above for the precise, current breakdown (discovery: verified; the telemetry sampler:
+  verified as a standalone call; an actual `vllm bench latency` run on ROCm: not yet). Stated
+  once above, not repeated here.
 - **Steps that require real NVIDIA hardware can't be verified on most machines.** `forgeway
   discover`, `forgeway bench`, and the "hardware found" half of `forgeway analyze` all fail
   cleanly (not silently) without an NVIDIA GPU — which is most contributors' and evaluators'
@@ -486,8 +492,8 @@ fixture-driven; two real hardware discovery adapters (`forgeway discover`, local
 `nvidia-smi` and local AMD GPUs via `rocm-smi` — see [`docs/discovery.md`](docs/discovery.md))
 and one real benchmark path across both vendors (`forgeway bench`, `vllm bench latency`,
 `provenance: MEASURED`, dispatching its GPU telemetry sampler by vendor — see
-[`docs/benchmarking.md`](docs/benchmarking.md)); **the ROCm side of both — discovery and
-benchmarking — is untested against real AMD hardware so far**, see the caveats above; the
+[`docs/benchmarking.md`](docs/benchmarking.md)) — see "What hardware is supported today?" above
+for the precise, current AMD/ROCm verification status (partially live-verified, not fully); the
 placement engine's evidence path is
 unified across fixture data and any real, locally saved `forgeway bench` run for a matching
 workload/target (`MEASURED > PUBLISHED > MODELED` — see

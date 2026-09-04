@@ -55,22 +55,41 @@ automatically from whatever `forgeway discover` found
 `source` strings name whichever tool actually produced the sample
 (`api/app/benchmark/evidence.py::_TELEMETRY_TOOL_BY_VENDOR`).
 
-**The ROCm telemetry sampler is now verified against real hardware; the
-`vllm bench latency` run itself is not.** `rocm_gpu_sampler.sample_gpu_once()`
-was run live over SSH against a real AMD Radeon RX 9070 XT and returned a
-real reading (`GpuSample(power_draw_w=10.0, memory_used_mb=301.6...)`),
-confirming both the `rocm-smi -d <index> --showmeminfo vram --showpower
---json` query and the field names it parses
-(`Average Graphics Package Power (W)`, `VRAM Total Used Memory (B)`)
-against a live device — the same run also validated the ROCm discovery
-adapter (`docs/discovery.md#verified-against-real-hardware`).
-`api/tests/test_benchmark_rocm_gpu_sampler.py` covers this in the regular
-suite. What's **still unverified**: an actual `vllm bench latency` run on
-ROCm — the test machine didn't have vLLM's ROCm build installed (see
-Dependencies below), so `run_vllm_bench_latency(..., gpu_vendor="amd")`'s
-subprocess orchestration itself, and the parser's assumptions about vLLM's
-output shape, remain "matches the documented shape" rather than "confirmed
-live," same caveat as always for that half of the pipeline.
+**Verification status of the ROCm side, precisely (this is the one place
+it's stated in full — see `docs/discovery.md#verification-status` for the
+five states used and the matching discovery-side status; README.md and
+ROADMAP.md summarize this section rather than restating it independently):**
+
+- **`rocm_gpu_sampler.sample_gpu_once()` (the sampling function itself):
+  LIVE VERIFIED.** Run directly, one-off, over SSH against a real AMD
+  Radeon RX 9070 XT, and it returned a real reading
+  (`GpuSample(power_draw_w=10.0, memory_used_mb=301.6...)`) — confirming
+  both the `rocm-smi -d <index> --showmeminfo vram --showpower --json`
+  query and the field names it parses (`Average Graphics Package Power
+  (W)`, `VRAM Total Used Memory (B)`) against a live device. The same
+  session also validated the ROCm discovery adapter
+  (`docs/discovery.md#verification-status`).
+- **That same function's persisted automated test suite
+  (`api/tests/test_benchmark_rocm_gpu_sampler.py`): IMPLEMENTED BUT NOT
+  LIVE VERIFIED, not "tested with captured real output."** Unlike the
+  discovery adapter's test suite (which now includes a regression test
+  using the real captured JSON verbatim), this suite still uses hand-built
+  fixtures constructed from rocm-smi's documented field names — the real
+  verification above was an ad hoc call, not a change to this file.
+- **`run_vllm_bench_latency(..., gpu_vendor="amd")`'s dispatch wrapper, the
+  `forgeway bench` CLI path end-to-end on ROCm, and
+  `evidence.py`'s `_TELEMETRY_TOOL_BY_VENDOR["amd"]` source-string mapping:
+  IMPLEMENTED BUT NOT LIVE VERIFIED.** The live run above called
+  `sample_gpu_once()` directly, bypassing this wrapper, `cmd_bench`, and
+  the evidence-building step entirely — none of those have been exercised
+  against real hardware, and no test fixture exercises the `vendor="amd"`
+  branch of `_TELEMETRY_TOOL_BY_VENDOR` either (existing evidence tests use
+  `vendor="nvidia"` only).
+- **An actual `vllm bench latency` run on ROCm: IMPLEMENTED BUT NOT LIVE
+  VERIFIED.** The test machine didn't have vLLM's ROCm build installed
+  (see Dependencies below), so neither the subprocess orchestration nor
+  the parser's assumptions about vLLM's output shape have been confirmed
+  against a live ROCm run.
 
 ## Why `vllm bench latency`, and what it does and doesn't measure
 
@@ -231,12 +250,13 @@ Override the directory with the `FORGEWAY_BENCH_DIR` environment variable.
   being omitted (or, for the one truly required field, a clear
   `BenchmarkError`), never a fabricated value — but a full schema mismatch
   in a future vLLM release is a real, plausible risk.
-- **The ROCm telemetry sampler (`rocm_gpu_sampler.py`) has not been run
-  against real `rocm-smi` output either** — its field names
-  (`VRAM Total Used Memory (B)`, `Average Graphics Package Power (W)`) come
-  from rocm-smi's own source, not a live run; see
-  `docs/discovery.md#amd-rocm-rocm-smi` for the same key-casing-variance
-  caveat that applies here too.
+- **The ROCm telemetry sampler itself is the one exception to the bullet
+  above — see "GPU vendor dispatch" earlier in this doc for the precise,
+  current status** (`rocm_gpu_sampler.sample_gpu_once()` has been LIVE
+  VERIFIED against a real AMD GPU; its persisted test suite and the
+  `forgeway bench` dispatch path around it have not). Stated once there,
+  not repeated here, specifically to avoid this file contradicting itself
+  the way it previously did.
 - **This is exactly why the raw vLLM output is saved alongside the parsed
   record** (`<run_id>.raw_vllm_output.json`) — if a real run's numbers look
   wrong, or `forgeway bench` fails to parse something, that file is the

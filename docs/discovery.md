@@ -225,23 +225,41 @@ placeholder, `interconnect` is always `"not probed"`, `tier` is always
 `"lab"`, and heterogeneous multi-model machines only get the first device's
 model/memory/architecture reflected (with an explicit note).
 
-### Verified against real hardware
+### Verification status
 
-Unlike when this adapter was first written, it has now been run against a
-real machine: an **AMD Radeon RX 9070 XT** (RDNA4, `gfx1201`) over SSH.
-Real `rocm-smi --json` output confirmed every field name this adapter
-expects (`Card Series`, `VRAM Total Memory (B)`, `VRAM Total Used Memory
-(B)`, `GPU use (%)`, `Unique ID`, `GFX Version`) — including the exact
-capitalization already assumed — and the resulting `ComputeTarget` came back
-correct end-to-end (`forgeway discover` on that machine reports `amd — AMD
-Radeon RX 9070 XT`, `15.9 GB`, `architecture: rdna4`). The `GFX Version`
-field's presence, and the fix to key architecture off it instead of a
-product-name guess, both came directly out of this real run — see
-`api/tests/test_discovery_rocm.py::test_discover_matches_real_rx9070xt_hardware`,
-which now regression-tests against that machine's actual captured JSON, not
-just a hand-built fixture. rocm-smi also emits a `WARNING:` line (e.g. about
-a GPU being in a low-power state) — confirmed to land on stderr, never
-stdout, so it doesn't interfere with this adapter's JSON parsing.
+This project uses five precise states for any hardware-verification claim:
+**NOT IMPLEMENTED**, **IMPLEMENTED BUT NOT LIVE VERIFIED** (code exists,
+only exercised against hand-built fixtures matching a documented/assumed
+shape), **IMPLEMENTED** (exists; verification status tracked separately),
+**TESTED WITH CAPTURED REAL OUTPUT** (a persisted automated test uses
+output verbatim-captured from real hardware, so it's regression-tested
+without needing that hardware present), and **LIVE VERIFIED** (actually
+executed against real hardware and confirmed correct). This section is the
+one place ROCm's status is stated in full detail — README.md,
+`docs/benchmarking.md`, and `ROADMAP.md` all summarize and link back here
+rather than independently restating it, specifically to avoid the kind of
+drift that previously left two of those files contradicting each other.
+
+**ROCm discovery (this adapter, all fields including architecture
+resolution): LIVE VERIFIED, and TESTED WITH CAPTURED REAL OUTPUT.** It has
+been run against a real machine — an **AMD Radeon RX 9070 XT** (RDNA4,
+`gfx1201`) — over SSH, via the actual `forgeway discover` CLI entrypoint,
+not just this module's functions called directly. Real `rocm-smi --json`
+output confirmed every field name this adapter expects (`Card Series`,
+`VRAM Total Memory (B)`, `VRAM Total Used Memory (B)`, `GPU use (%)`,
+`Unique ID`, `GFX Version`) — including the exact capitalization already
+assumed — and the resulting `ComputeTarget` came back correct end-to-end
+(`forgeway discover` on that machine reports `amd — AMD Radeon RX 9070
+XT`, `15.9 GB`, `architecture: rdna4`). The `GFX Version` field's presence,
+and the fix to key architecture off it instead of a product-name guess,
+both came directly out of this real run.
+`api/tests/test_discovery_rocm.py::test_discover_matches_real_rx9070xt_hardware`
+now regression-tests against that machine's actual captured JSON verbatim,
+not just a hand-built fixture — this is the "tested with captured real
+output" half of the claim, in addition to the live run itself. rocm-smi
+also emits a `WARNING:` line (e.g. about a GPU being in a low-power state)
+— confirmed to land on stderr, never stdout, so it doesn't interfere with
+this adapter's JSON parsing.
 
 This is one real GPU on one ROCm version, not exhaustive coverage — a
 different card, driver, or ROCm release could still expose a field-naming
@@ -249,11 +267,17 @@ variant this adapter's case-insensitive lookup doesn't yet handle. If you
 hit that, the `DiscoveryError` message includes the raw per-card fields it
 saw, which is what's needed to extend `_lookup()`'s field-name list.
 
-A real benchmark path (`forgeway bench` equivalent) also now exists for
-ROCm — see [`docs/benchmarking.md`](benchmarking.md#gpu-vendor-dispatch) —
-though only its GPU telemetry sampler has been verified against real
-hardware so far, not a full `vllm bench latency` run (vLLM's ROCm build
-wasn't installed on the test machine).
+**The ROCm GPU telemetry sampler used by `forgeway bench`
+(`rocm_gpu_sampler.sample_gpu_once()`): LIVE VERIFIED, but only as a direct,
+one-off function call — not via the `forgeway bench` CLI or
+`run_vllm_bench_latency()`'s dispatch wrapper, and its own persisted
+automated test suite is still hand-built fixtures, not captured real
+output (unlike this adapter's).** See
+[`docs/benchmarking.md`](benchmarking.md#gpu-vendor-dispatch) for the exact
+breakdown of what was and wasn't verified on the benchmarking side —
+notably, an actual `vllm bench latency` run on ROCm remains **IMPLEMENTED
+BUT NOT LIVE VERIFIED**, since vLLM's ROCm build wasn't installed on the
+test machine.
 
 ## Failure behavior
 

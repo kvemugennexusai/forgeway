@@ -23,11 +23,15 @@
     "provenance": "PUBLISHED",
     "range_low": 3.49,
     "range_high": 4.79,
-    "source": "Cloud on-demand list price, 80GB SXM5 instance, captured 2026-08"
+    "source": "Cloud on-demand list price, 80GB SXM5 instance, captured 2026-08",
+    "evidence_reference": null
   },
   "status": "healthy",
   "unsupported_workload_classes": [],
   "notes": "Primary datacenter pool. Broadest software/runtime maturity of any target in the estate.",
+  "observed_gpu_utilization_pct": null,
+  "observed_memory_utilization_pct": null,
+  "discovered_at": null,
   "free_capacity_units": 5,
   "utilization_pct": 84.4,
   "accelerator_count": 32

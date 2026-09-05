@@ -6,7 +6,8 @@ to determine where AI workloads should run — which targets are **feasible**, w
 outcome on each is, how they **rank**, which one it **recommends**, and **why** — including what
 loses and why, and how the recommendation changes under a demand spike or a capacity loss.
 
-> A fresh, independent build — not a fork or port of any prior project. New repo, own history.
+> **Limited technical preview.** Local evaluation only — see [Deployment scope](#deployment-scope)
+> before pointing this at anything but your own machine.
 
 [![CI](https://github.com/kvemugennexusai/forgeway/actions/workflows/ci.yml/badge.svg)](https://github.com/kvemugennexusai/forgeway/actions/workflows/ci.yml)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-D22128?logo=apache&logoColor=white)](LICENSE)
@@ -17,6 +18,16 @@ loses and why, and how the recommendation changes under a demand spike or a capa
 [![React](https://img.shields.io/badge/React-19-149ECA?logo=react&logoColor=white)](web/package.json)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript&logoColor=white)](web/package.json)
 [![Last commit](https://img.shields.io/github/last-commit/kvemugennexusai/forgeway)](https://github.com/kvemugennexusai/forgeway/commits/main)
+
+## Deployment scope
+
+This release is for **local evaluation only** — run it on your own machine (or your own LAN, per
+"Testing from another device on your LAN" below), not as a shared or internet-facing service.
+The API has **no authentication of any kind** (no login, no API keys, no sessions — every route
+is open) and this preview does not add one; CORS is intentionally permissive for
+`localhost`/private-LAN origins and rejects public ones outright, but that is not a substitute
+for auth. See [`SECURITY.md`](SECURITY.md) for the full breakdown before running this anywhere
+other than `localhost` or your own LAN.
 
 ## Try it in two minutes
 
@@ -79,17 +90,22 @@ Run `forgeway analyze ... --json` for the full PlacementDecision record.
 
 ## Screenshots
 
-<!--
-TODO(human): capture these three screens and drop the images here.
-1. The estate dashboard (`/`) — the Forgeway Insight card showing the
-   MI300X-cheaper-than-H100 callout that's live on first load.
-2. The recommendation detail page (`/recommendations/[id]`) after running
-   `/analyze` on the Llama 3.1 70B workload — the candidate comparison
-   table, with one rejected target's feasibility checklist expanded.
-3. The scenario simulation BEFORE/EVENT/AFTER view (click "Demand Spike"
-   on a recommendation page) — the split-allocation panel showing the
-   40/60 MI300X/H100 split and the change-explanation callout.
--->
+**Estate dashboard** (`/`) — the Forgeway Insight card showing the MI300X-cheaper-than-H100
+callout that's live on first load:
+
+![Estate dashboard](docs/screenshots/estate-dashboard.jpg)
+
+**Recommendation detail** (`/recommendations/[id]`) after running `/analyze` on the Llama 3.1
+70B workload — candidate comparison table with L40S's feasibility checklist expanded, and the
+evidence panel showing PUBLISHED/MODELED provenance badges:
+
+![Recommendation candidate comparison](docs/screenshots/recommendation-candidate-comparison.jpg)
+
+**Scenario simulation** — clicking "Demand Spike" on a recommendation page produces this
+BEFORE/EVENT/AFTER view, recommending a 40/60 MI300X/H100 split placement with an explicit
+change-explanation callout:
+
+![Demand spike scenario](docs/screenshots/demand-spike-scenario.jpg)
 
 ### Why it exists
 
@@ -102,10 +118,10 @@ guessing.
 
 ### What can I run today?
 
-- **The CLI**, on any machine: `forgeway discover` (real local NVIDIA hardware, if present),
-  `forgeway bench` (a real vLLM benchmark, if you have a CUDA GPU), and `forgeway analyze` (the
-  real decision engine, against this repo's fixture workloads or your own YAML) — see
-  **Quick start** below.
+- **The CLI**, on any machine: `forgeway discover` (real local NVIDIA or AMD hardware, if
+  present), `forgeway bench` (a real vLLM benchmark, if you have a CUDA or ROCm GPU), and
+  `forgeway analyze` (the real decision engine, against this repo's fixture workloads or your
+  own YAML) — see **Quick start** below.
 - **The web demo**: a fixture-driven dashboard, workload analyzer, and scenario simulator, plus
   `/import` — upload a real `forgeway discover`/`forgeway bench` result and let the same engine
   score it alongside the fixture catalog. See "Running the demo" below.
@@ -148,11 +164,12 @@ what's vendor-specific.
   [`docs/discovery.md#verification-status`](docs/discovery.md#verification-status) for the
   precise breakdown and the one remaining thin gap (the plain `forgeway bench` CLI entrypoint
   itself vs. the equivalent, already-proven `bench-profile` path).
-- **Steps that require real NVIDIA hardware can't be verified on most machines.** `forgeway
-  discover`, `forgeway bench`, and the "hardware found" half of `forgeway analyze` all fail
-  cleanly (not silently) without an NVIDIA GPU — which is most contributors' and evaluators'
-  machines. `forgeway analyze` against the fixture catalog, and every web demo feature except
-  actually running `forgeway discover`/`forgeway bench` yourself, work on any machine.
+- **Steps that require real NVIDIA or AMD hardware can't be verified on most machines.**
+  `forgeway discover`, `forgeway bench`, and the "hardware found" half of `forgeway analyze` all
+  fail cleanly (not silently) without a supported GPU — which is most contributors' and
+  evaluators' machines. `forgeway analyze` against the fixture catalog, and every web demo
+  feature except actually running `forgeway discover`/`forgeway bench` yourself, work on any
+  machine.
 - **Scenario simulation** (demand spike, capacity loss, policy changes) recomputes the real
   engine against a hypothetical input — it's a real re-run, not a live projection from telemetry.
 - **`/import`** stores uploaded hardware/evidence in browser `localStorage` only — no server-side
@@ -174,10 +191,10 @@ cd api
 python3 -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -r requirements.txt        # registers the `forgeway` console script
 
-# 2. discover — real local NVIDIA hardware, if present (cleanly reports "none found" otherwise)
+# 2. discover — real local NVIDIA or AMD hardware, if present (cleanly reports "none found" otherwise)
 forgeway discover
 
-# 3. bench — a real vLLM benchmark (requires a CUDA GPU + vLLM installed; see docs/benchmarking.md)
+# 3. bench — a real vLLM benchmark (requires a CUDA or ROCm GPU + vLLM installed; see docs/benchmarking.md)
 forgeway bench --model meta-llama/Llama-3.1-8B-Instruct --input-tokens 512 --output-tokens 128
 
 # 4. analyze — the real decision engine against a workload (works on any machine, no GPU required)
@@ -186,7 +203,8 @@ forgeway analyze examples/workload.yaml
 ```
 
 Steps 1 and 4 work on any machine with no GPU. Step 2 works on any machine but only finds
-hardware on one with an NVIDIA GPU and driver installed. Step 3 needs a CUDA GPU and vLLM. See
+hardware on one with an NVIDIA or AMD GPU and driver installed. Step 3 needs a CUDA or ROCm GPU
+and vLLM (a ROCm build is more involved to install — see `docs/benchmarking.md`). See
 "CLI: hardware discovery", "CLI: benchmarking", and "CLI: placement analysis" below for the full
 detail on each, and "End-to-end: CLI benchmark → web import → analyze" for how all four (plus the
 web UI) connect.
@@ -563,8 +581,9 @@ workload** (same family/parameter count) — `forgeway bench`'s own default mode
 `forgeway bench` run (no `--workload-id`) imports and displays correctly but is honestly never
 picked up during analysis. To see the full pipeline working end-to-end without needing matching
 GPU hardware, skip step 2 and upload the pair already checked into this repo instead —
-`examples/discovered-target.json` + `examples/benchmark-result.json`, a real, honestly-tagged
-pair for `wl-llama70b-rt` (see `examples/README.md`) — then run `/analyze` on that workload.
+`examples/discovered-target.json` + `examples/benchmark-result.json`, a synthetic, schema-valid
+pair for `wl-llama70b-rt` (illustrative hand-constructed values, not a real hardware measurement
+— see `examples/README.md`) — then run `/analyze` on that workload.
 
 None of this touches the web demo's in-memory store or UI persistently. `forgeway analyze` does
 read the same fixture catalog the web app reads (`app/data/loader.py`) as its base target list —

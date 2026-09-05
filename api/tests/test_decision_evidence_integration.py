@@ -150,9 +150,10 @@ def test_recommendation_changes_when_stronger_measured_evidence_is_introduced(tm
     thing that changes between the two run_decision() calls is that a real
     MEASURED benchmark run for amd-mi300x becomes available in between.
 
-    At 85%: H100's MEASURED evidence (confidence 97, capped to 92 overall
-    by its own pricing confidence) already qualifies; MI300X's only prior
-    evidence (MODELED, confidence 78) does not, so H100 is recommended
+    At 85%: H100's fixture evidence (a synthetic demo baseline, MODELED,
+    confidence 97, capped to 92 overall by its own pricing confidence)
+    already qualifies; MI300X's only prior evidence (also MODELED,
+    confidence 78) does not, so H100 is recommended
     solo. Once a real, high-confidence MEASURED run for MI300X is
     introduced — replacing the old MODELED evidence via select_evidence's
     MEASURED > MODELED preference — MI300X's overall confidence rises to

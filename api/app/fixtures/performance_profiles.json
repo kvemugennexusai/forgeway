@@ -5,18 +5,18 @@
     "throughput_tokens_per_s_per_replica": {
       "value": 1050,
       "confidence": 97,
-      "provenance": "MEASURED",
+      "provenance": "MODELED",
       "range_low": 990,
       "range_high": 1100,
-      "source": "Production telemetry, trailing 24h window (current placement)"
+      "source": "Synthetic demo baseline (not from a live deployment or a real benchmark run) — a fixed current-placement figure this fixture-driven demo's recommendation is written to compare against."
     },
     "p99_latency_ms_per_replica": {
       "value": 390,
       "confidence": 97,
-      "provenance": "MEASURED",
+      "provenance": "MODELED",
       "range_low": 370,
       "range_high": 410,
-      "source": "Production telemetry, trailing 24h window (current placement)"
+      "source": "Synthetic demo baseline (not from a live deployment or a real benchmark run) — a fixed current-placement figure this fixture-driven demo's recommendation is written to compare against."
     }
   },
   {

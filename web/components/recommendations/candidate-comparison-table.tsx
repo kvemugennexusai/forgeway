@@ -12,6 +12,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { ProvenanceBadge } from "@/components/provenance-badge";
 import { VendorBadge } from "@/components/vendor-badge";
 import { importedTargetIds } from "@/lib/imported-storage";
 import type { CandidateEvaluation, CandidateStatus } from "@/lib/types";
@@ -67,14 +68,17 @@ function CandidateRow({ candidate, isImported }: { candidate: CandidateEvaluatio
               <div className="mt-0.5 flex items-center gap-1.5">
                 <VendorBadge vendor={candidate.vendor} />
                 {isImported ? (
-                  <Badge variant="measured" className="uppercase">
-                    Your measured compute
+                  <Badge variant="outline" className="uppercase">
+                    Your imported compute
                   </Badge>
                 ) : (
                   <Badge variant="outline" className="uppercase text-muted-foreground">
                     Reference compute
                   </Badge>
                 )}
+                {candidate.predicted ? (
+                  <ProvenanceBadge provenance={candidate.predicted.provenance} />
+                ) : null}
               </div>
             </div>
           </div>

@@ -25,12 +25,16 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from app.core.engine.feasibility import evaluate_feasibility  # noqa: E402
 from app.core.engine.ranking import normalize_and_weight
 from app.core.engine.scoring import score_candidate
+from app.core.schemas import LATENCY_METRIC_KEY, THROUGHPUT_METRIC_KEY
 from app.core.schemas.v0_1 import PerformanceEvidence, PlacementDecision
 from app.data.loader import (
     get_performance_profile,
     get_workload,
     load_compute_targets,
 )
+from app.engine.evidence_gateway import resolve_evidence
+
+_REQUIRED_METRICS = (LATENCY_METRIC_KEY, THROUGHPUT_METRIC_KEY)
 
 EXAMPLES_DIR = Path(__file__).resolve().parent.parent.parent / "examples"
 
@@ -53,8 +57,9 @@ def main() -> None:
     assert workload is not None
     _write(EXAMPLES_DIR / "ai_workload.v0_1.json", workload)
 
-    # 3. PerformanceEvidence — the MEASURED H100/llama70b row (this
-    #    workload's current, production-telemetry placement).
+    # 3. PerformanceEvidence — the H100/llama70b fixture row (this
+    #    workload's synthetic demo current-placement baseline; MODELED, not
+    #    a real measurement — see api/app/fixtures/performance_profiles.json).
     profile = get_performance_profile("wl-llama70b-rt", "nvidia-h100-dc")
     assert profile is not None
     evidence = PerformanceEvidence.from_performance_profile(profile)
@@ -62,17 +67,24 @@ def main() -> None:
 
     # 4. PlacementDecision — the real baseline decision for wl-llama70b-rt,
     #    built by running the actual core pipeline against real fixtures.
+    #    score_candidate() takes already-*selected* evidence, not a raw
+    #    fixture profile — resolve_evidence() is the same gather+select step
+    #    app.engine.decision.run_decision() uses (docs/decision-engine.md);
+    #    benchmark_runs=[] here since this script only regenerates from the
+    #    static fixture catalog, not any locally saved `forgeway bench` run.
     targets = load_compute_targets()
     targets_by_id = {t.id: t for t in targets}
     candidates = []
     for target in targets:
         checks = evaluate_feasibility(workload, target)
-        p = get_performance_profile(workload.id, target.id)
+        target_evidence = resolve_evidence(
+            workload.id, target.id, benchmark_runs=[], required_metrics=_REQUIRED_METRICS
+        )
         candidates.append(
             score_candidate(
                 workload=workload,
                 target=target,
-                profile=p,
+                evidence=target_evidence,
                 checks=checks,
                 required_throughput=workload.slo.min_throughput_tokens_per_s,
                 free_capacity_units=target.free_capacity_units,

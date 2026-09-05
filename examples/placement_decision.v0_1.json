@@ -13,8 +13,8 @@
     "measured_p99_latency_ms": 390.0,
     "measured_throughput_tokens_per_s_per_replica": 1050.0,
     "cost_per_hr": 8.2,
-    "provenance": "MEASURED",
-    "source": "Production telemetry, trailing 24h window"
+    "provenance": "MODELED",
+    "source": "Synthetic demo baseline (not from a live deployment) — this workload's fixed starting point for the recommendation to compare against."
   },
   "evaluated_targets": [
     "nvidia-h100-dc",

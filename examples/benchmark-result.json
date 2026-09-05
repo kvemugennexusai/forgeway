@@ -7,71 +7,71 @@
     "end_to_end_latency_ms": {
       "value": 284.0,
       "confidence": 95.0,
-      "provenance": "MEASURED",
+      "provenance": "MODELED",
       "range_low": null,
       "range_high": null,
-      "source": "vllm bench latency, model=meta-llama/Llama-3.1-70B-Instruct",
+      "source": "Synthetic example value illustrating the shape of a vllm bench latency result (model=meta-llama/Llama-3.1-70B-Instruct) — not a collected benchmark run. The 95% confidence is an illustrative placeholder, not empirically calibrated.",
       "evidence_reference": null
     },
     "output_token_throughput_tokens_per_s": {
       "value": 450.7,
       "confidence": 95.0,
-      "provenance": "MEASURED",
+      "provenance": "MODELED",
       "range_low": null,
       "range_high": null,
-      "source": "derived: (output_tokens * concurrency) / measured avg latency",
+      "source": "Synthetic example value illustrating a derived metric ((output_tokens * concurrency) / avg latency) — not a real measurement. The 95% confidence is an illustrative placeholder, not empirically calibrated.",
       "evidence_reference": null
     },
     "request_throughput_requests_per_s": {
       "value": 3.5211,
       "confidence": 95.0,
-      "provenance": "MEASURED",
+      "provenance": "MODELED",
       "range_low": null,
       "range_high": null,
-      "source": "derived: concurrency / measured avg latency",
+      "source": "Synthetic example value illustrating a derived metric (concurrency / avg latency) — not a real measurement. The 95% confidence is an illustrative placeholder, not empirically calibrated.",
       "evidence_reference": null
     },
     "p50_latency_ms": {
       "value": 270.0,
       "confidence": 95.0,
-      "provenance": "MEASURED",
+      "provenance": "MODELED",
       "range_low": null,
       "range_high": null,
-      "source": "vllm bench latency, model=meta-llama/Llama-3.1-70B-Instruct",
+      "source": "Synthetic example value illustrating the shape of a vllm bench latency result (model=meta-llama/Llama-3.1-70B-Instruct) — not a collected benchmark run. The 95% confidence is an illustrative placeholder, not empirically calibrated.",
       "evidence_reference": null
     },
     "p99_latency_ms": {
       "value": 340.0,
       "confidence": 95.0,
-      "provenance": "MEASURED",
+      "provenance": "MODELED",
       "range_low": null,
       "range_high": null,
-      "source": "vllm bench latency, model=meta-llama/Llama-3.1-70B-Instruct",
+      "source": "Synthetic example value illustrating the shape of a vllm bench latency result (model=meta-llama/Llama-3.1-70B-Instruct) — not a collected benchmark run. The 95% confidence is an illustrative placeholder, not empirically calibrated.",
       "evidence_reference": null
     },
     "throughput_tokens_per_s_per_replica": {
       "value": 450.7,
       "confidence": 95.0,
-      "provenance": "MEASURED",
+      "provenance": "MODELED",
       "range_low": null,
       "range_high": null,
-      "source": "derived: (output_tokens * concurrency) / measured avg latency",
+      "source": "Synthetic example value illustrating a derived metric ((output_tokens * concurrency) / avg latency) — not a real measurement. The 95% confidence is an illustrative placeholder, not empirically calibrated.",
       "evidence_reference": null
     },
     "p99_latency_ms_per_replica": {
       "value": 340.0,
       "confidence": 95.0,
-      "provenance": "MEASURED",
+      "provenance": "MODELED",
       "range_low": null,
       "range_high": null,
-      "source": "vllm bench latency, model=meta-llama/Llama-3.1-70B-Instruct",
+      "source": "Synthetic example value illustrating the shape of a vllm bench latency result (model=meta-llama/Llama-3.1-70B-Instruct) — not a collected benchmark run. The 95% confidence is an illustrative placeholder, not empirically calibrated.",
       "evidence_reference": null
     }
   },
-  "provenance": "MEASURED",
+  "provenance": "MODELED",
   "confidence": 95.0,
-  "source": "vllm bench latency (offline, single-node, no server)",
-  "timestamp": "2026-08-30T14:09:47Z",
+  "source": "Synthetic example value illustrating the PerformanceEvidence shape a real `vllm bench latency` (offline, single-node, no server) run would produce — hand-constructed, not a collected benchmark result. The 95% confidence is an illustrative placeholder, not empirically calibrated.",
+  "timestamp": null,
   "forgeway_version": "0.1.0",
-  "benchmark_run_id": "bench-example-8f3a1c9d2b47"
+  "benchmark_run_id": null
 }

@@ -64,8 +64,9 @@ never silently paired with the wrong hardware.
    (`/import`). To see the full pipeline immediately without any real GPU
    hardware, upload the two files already checked into this repo:
    `examples/discovered-target.json` and `examples/benchmark-result.json`
-   — a real, honestly-generated pair (see `examples/README.md`) for
-   `wl-llama70b-rt`.
+   — schema-valid and honestly labeled, but illustrative (hand-constructed
+   inputs run through the real code path, not from an actual GPU — see
+   `examples/README.md`) for `wl-llama70b-rt`.
 3. Upload `my-target.json` in the **Compute target** dropzone, then
    `my-evidence.json` in the **Performance evidence** dropzone.
 4. Go to **Analyze workload** (`/analyze`). If anything was imported, a

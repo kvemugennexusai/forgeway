@@ -1,0 +1,58 @@
+name: Preview feedback
+description: Feedback on the v0.1.1 limited technical preview — setup problems, confusing recommendations, or anything that seemed off.
+title: "[Preview]: "
+labels: ["preview-feedback"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for testing the preview. **Please omit secrets** (API keys,
+        tokens, internal hostnames, IPs, etc.) from anything you paste below
+        — this is a public repository.
+
+  - type: dropdown
+    id: kind
+    attributes:
+      label: What kind of feedback is this?
+      options:
+        - Setup/installation failure
+        - A recommendation or explanation was confusing or seemed wrong
+        - Something felt like it implied more than it actually does
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: os
+    attributes:
+      label: OS and version
+      placeholder: e.g. Ubuntu 24.04, macOS 15.1, Windows 11
+    validations:
+      required: true
+
+  - type: input
+    id: python-version
+    attributes:
+      label: Python version
+      placeholder: e.g. 3.11.9 — output of `python --version`
+    validations:
+      required: true
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What you did, what you expected, and what happened instead
+      description: >
+        Include the exact command(s) you ran, or the exact page/recommendation
+        you're referring to. Paste full output where relevant — with secrets
+        removed.
+    validations:
+      required: true
+
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Anything else?
+      description: Optional — hardware involved, workload/policy files you used, etc.
+    validations:
+      required: false

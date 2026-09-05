@@ -200,9 +200,9 @@ export function ImportPanel() {
       <div>
         <div className="mb-2 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <h3 className="text-sm font-medium text-foreground">Your measured compute</h3>
-            <Badge variant="measured" className="uppercase">
-              Your measured compute
+            <h3 className="text-sm font-medium text-foreground">Your imported compute</h3>
+            <Badge variant="outline" className="uppercase">
+              Your imported compute
             </Badge>
           </div>
           {targets.length > 0 || evidence.length > 0 ? (
@@ -222,7 +222,7 @@ export function ImportPanel() {
             {targets.map((t) => (
               <div
                 key={t.id}
-                className="flex items-start justify-between gap-3 rounded-md border border-provenance-measured/30 bg-provenance-measured/5 p-3"
+                className="flex items-start justify-between gap-3 rounded-md border border-primary/30 bg-primary/5 p-3"
               >
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">

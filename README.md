@@ -181,6 +181,7 @@ forgeway discover
 forgeway bench --model meta-llama/Llama-3.1-8B-Instruct --input-tokens 512 --output-tokens 128
 
 # 4. analyze — the real decision engine against a workload (works on any machine, no GPU required)
+cd ..
 forgeway analyze examples/workload.yaml
 ```
 
@@ -510,6 +511,7 @@ for how evidence selection works; nothing about it changes when the caller is th
 an HTTP request — that's the whole point.
 
 ```bash
+cd ..   # back to the repo root, if you're continuing on from the sections above
 forgeway analyze examples/workload.yaml
 forgeway analyze examples/workload.yaml --json                          # full PlacementDecision JSON
 forgeway analyze examples/workload.yaml --policy examples/policy.yaml   # override its enterprise policy
@@ -543,6 +545,7 @@ The three CLI commands plus the web import above form one coherent pipeline, eac
 usable by the next:
 
 ```bash
+cd ..   # back to the repo root, if you're continuing on from the sections above
 forgeway discover --json > my-target.json                                              # 1. what hardware is here?
 forgeway bench --model <model> --workload-id <a real workload id it matches> --json \
   > my-evidence.json                                                                   # 2. how does it perform?

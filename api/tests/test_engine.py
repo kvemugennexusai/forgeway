@@ -325,7 +325,7 @@ def test_changing_confidence_threshold_can_change_recommendation():
     assert by_id["amd-mi300x"].confidence_pct < 85  # MODELED prediction, below the strict bar
 
     assert permissive.recommended_target_id == "amd-mi300x"
-    assert strict.recommended_target_id == "nvidia-h100-dc"  # only the MEASURED candidate clears 85%
+    assert strict.recommended_target_id == "nvidia-h100-dc"  # only H100's 97%-confidence evidence clears 85%
 
 
 def _spike(workload, baseline, multiplier: float, record_id: str):

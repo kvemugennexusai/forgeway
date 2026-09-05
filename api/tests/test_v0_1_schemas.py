@@ -278,7 +278,10 @@ def test_performance_evidence_example_validates():
     raw = (_EXAMPLES_DIR / "performance_evidence.v0_1.json").read_text()
     evidence = PerformanceEvidence.model_validate_json(raw)
     assert evidence.schema_version == SCHEMA_VERSION
-    assert evidence.provenance == "MEASURED"
+    # MODELED, not MEASURED — this fixture's numbers are a synthetic demo
+    # baseline (api/app/fixtures/performance_profiles.json), never claimed
+    # to be real telemetry. See docs/schemas.md's provenance-honesty note.
+    assert evidence.provenance == "MODELED"
 
 
 def test_placement_decision_example_validates():

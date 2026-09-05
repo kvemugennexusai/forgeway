@@ -26,8 +26,8 @@
       "measured_p99_latency_ms": 390,
       "measured_throughput_tokens_per_s_per_replica": 1050,
       "cost_per_hr": 8.20,
-      "provenance": "MEASURED",
-      "source": "Production telemetry, trailing 24h window"
+      "provenance": "MODELED",
+      "source": "Synthetic demo baseline (not from a live deployment) — this workload's fixed starting point for the recommendation to compare against."
     },
     "objective_weights": { "cost": 0.5, "performance": 0.3, "headroom": 0.2 },
     "min_confidence_pct": 70,
@@ -61,8 +61,8 @@
       "measured_p99_latency_ms": 18400,
       "measured_throughput_tokens_per_s_per_replica": 620,
       "cost_per_hr": 7.60,
-      "provenance": "MEASURED",
-      "source": "Production telemetry, trailing 24h window"
+      "provenance": "MODELED",
+      "source": "Synthetic demo baseline (not from a live deployment) — this workload's fixed starting point for the recommendation to compare against."
     },
     "objective_weights": { "cost": 0.7, "performance": 0.1, "headroom": 0.2 },
     "min_confidence_pct": 70,
@@ -95,8 +95,8 @@
       "measured_p99_latency_ms": 1850,
       "measured_throughput_tokens_per_s_per_replica": 0,
       "cost_per_hr": 3.75,
-      "provenance": "MEASURED",
-      "source": "Production telemetry, trailing 24h window"
+      "provenance": "MODELED",
+      "source": "Synthetic demo baseline (not from a live deployment) — this workload's fixed starting point for the recommendation to compare against."
     },
     "objective_weights": { "cost": 0.3, "performance": 0.5, "headroom": 0.2 },
     "min_confidence_pct": 70,
@@ -129,8 +129,8 @@
       "measured_p99_latency_ms": 2100,
       "measured_throughput_tokens_per_s_per_replica": 0,
       "cost_per_hr": 0.35,
-      "provenance": "MEASURED",
-      "source": "On-device telemetry, trailing 24h window"
+      "provenance": "MODELED",
+      "source": "Synthetic demo baseline (not from a live deployment) — this workload's fixed starting point for the recommendation to compare against."
     },
     "objective_weights": { "cost": 0.6, "performance": 0.2, "headroom": 0.2 },
     "min_confidence_pct": 70,
@@ -163,8 +163,8 @@
       "measured_p99_latency_ms": 9200,
       "measured_throughput_tokens_per_s_per_replica": 0,
       "cost_per_hr": 0.60,
-      "provenance": "MEASURED",
-      "source": "Bench profiling run, 2026-08-14, on-device"
+      "provenance": "MODELED",
+      "source": "Synthetic demo baseline (not from a real bench run) — this workload's fixed starting point for the recommendation to compare against."
     },
     "objective_weights": { "cost": 0.6, "performance": 0.2, "headroom": 0.2 },
     "min_confidence_pct": 70,

@@ -36,8 +36,8 @@ current_placement:
   measured_p99_latency_ms: 390
   measured_throughput_tokens_per_s_per_replica: 1050
   cost_per_hr: 8.20
-  provenance: MEASURED
-  source: "Production telemetry, trailing 24h window"
+  provenance: MODELED
+  source: "Synthetic demo baseline (not from a live deployment) — this workload's fixed starting point for the recommendation to compare against."
 objective_weights:
   cost: 0.5
   performance: 0.3

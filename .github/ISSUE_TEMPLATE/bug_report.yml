@@ -1,0 +1,88 @@
+name: Bug report
+description: Something didn't work the way it should.
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Every bug this repo gets is environment-specific — which command,
+        which OS, which GPU (if any), which driver/runtime versions. Filling
+        in every field below means the first reply can be about your actual
+        bug, not "what hardware do you have?"
+
+  - type: dropdown
+    id: command-or-page
+    attributes:
+      label: Which command or page?
+      options:
+        - forgeway discover
+        - forgeway bench
+        - forgeway bench-profile
+        - forgeway analyze
+        - forgeway compare-runs
+        - forgeway runs
+        - web demo
+        - API
+        - other
+    validations:
+      required: true
+
+  - type: input
+    id: os
+    attributes:
+      label: OS and version
+      placeholder: e.g. Ubuntu 24.04, macOS 15.1, Windows 11
+    validations:
+      required: true
+
+  - type: input
+    id: python-version
+    attributes:
+      label: Python version
+      placeholder: e.g. 3.11.9 — output of `python --version`
+    validations:
+      required: true
+
+  - type: input
+    id: gpu
+    attributes:
+      label: GPU vendor and model
+      placeholder: e.g. NVIDIA H100 80GB, AMD Radeon RX 9070 XT — or "none"
+    validations:
+      required: true
+
+  - type: input
+    id: driver-version
+    attributes:
+      label: GPU driver / ROCm / CUDA version
+      placeholder: e.g. driver 550.90.07 / CUDA 12.4, or ROCm 6.7.0 — or "n/a"
+    validations:
+      required: true
+
+  - type: input
+    id: vllm-version
+    attributes:
+      label: vLLM version
+      placeholder: e.g. 0.9.2 — output of `pip show vllm` — or "not installed"
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected-vs-actual
+    attributes:
+      label: What you expected vs. what happened
+      description: Be specific — the exact behavior you expected, and the exact behavior you got.
+    validations:
+      required: true
+
+  - type: textarea
+    id: command-and-output
+    attributes:
+      label: Full command and output
+      description: >
+        The exact command you ran and its complete output, not a summary or
+        a screenshot description. Include the full traceback if there is one.
+      render: shell
+    validations:
+      required: true

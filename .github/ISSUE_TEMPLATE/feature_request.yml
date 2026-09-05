@@ -1,0 +1,38 @@
+name: Feature request
+description: Propose something new, or a change to existing behavior.
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        See `ROADMAP.md` first — your idea may already be planned (or
+        deliberately out of scope, under "Not planned"). See
+        `CONTRIBUTING.md`'s "Project philosophy" section too: proposals that
+        would require fabricating a metric, or re-implementing scoring
+        outside `app/engine/decision.py`, won't be accepted as described —
+        say so up front if you're aware your idea touches either.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve?
+      description: What are you trying to do today that Forgeway doesn't support, or doesn't support well?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed change
+      description: As concrete as you can make it — a new CLI flag, a new adapter, a new fixture, etc.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Anything else you thought about, or workarounds you're using now. Optional.
+    validations:
+      required: false

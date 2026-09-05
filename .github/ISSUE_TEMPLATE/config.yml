@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Questions and discussion
+    url: https://github.com/kvemugennexusai/forgeway/discussions
+    about: Ask a question, discuss an idea, or get help before filing an issue.

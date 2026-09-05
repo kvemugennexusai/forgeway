@@ -29,7 +29,7 @@ export default async function WorkloadsPage() {
       <PageHeader
         eyebrow="Compute estate"
         title="Workloads"
-        description="Active workloads and their current placement. SLO status and cost reflect measured production telemetry."
+        description="Active workloads and their current placement. Each row's latency figure shows its own provenance (measured, published, or modeled) — not all of them are live telemetry."
       />
       <div className="p-6">
         <Card>

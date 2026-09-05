@@ -581,8 +581,9 @@ workload** (same family/parameter count) — `forgeway bench`'s own default mode
 `forgeway bench` run (no `--workload-id`) imports and displays correctly but is honestly never
 picked up during analysis. To see the full pipeline working end-to-end without needing matching
 GPU hardware, skip step 2 and upload the pair already checked into this repo instead —
-`examples/discovered-target.json` + `examples/benchmark-result.json`, a real, honestly-tagged
-pair for `wl-llama70b-rt` (see `examples/README.md`) — then run `/analyze` on that workload.
+`examples/discovered-target.json` + `examples/benchmark-result.json`, a synthetic, schema-valid
+pair for `wl-llama70b-rt` (illustrative hand-constructed values, not a real hardware measurement
+— see `examples/README.md`) — then run `/analyze` on that workload.
 
 None of this touches the web demo's in-memory store or UI persistently. `forgeway analyze` does
 read the same fixture catalog the web app reads (`app/data/loader.py`) as its base target list —

@@ -289,3 +289,22 @@ def test_placement_decision_example_validates():
     decision = PlacementDecision.model_validate_json(raw)
     assert decision.schema_version == SCHEMA_VERSION
     assert decision.recommended_target_id == "amd-mi300x"
+
+
+def test_import_example_benchmark_result_never_claims_measured():
+    """examples/benchmark-result.json (the /import-flow illustration for
+    docs/importing-results.md) is a hand-constructed, illustrative parsed
+    result — no CUDA GPU has ever been available in this project's dev
+    environment (docs/benchmarking.md) to produce a real one. It must never
+    regress to claiming MEASURED, at the record level or on any individual
+    metric — see examples/README.md's provenance-honesty note."""
+    raw = (_EXAMPLES_DIR / "benchmark-result.json").read_text()
+    evidence = PerformanceEvidence.model_validate_json(raw)
+    assert evidence.schema_version == SCHEMA_VERSION
+    assert evidence.provenance == "MODELED"
+    assert evidence.metrics, "expected at least one metric to actually check"
+    for name, metric in evidence.metrics.items():
+        assert metric.provenance == "MODELED", f"{name} must not claim MEASURED"
+    # No real run ever produced these — nothing to timestamp or trace back to.
+    assert evidence.timestamp is None
+    assert evidence.benchmark_run_id is None

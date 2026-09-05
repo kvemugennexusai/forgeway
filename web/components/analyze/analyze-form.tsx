@@ -186,8 +186,8 @@ export function AnalyzeForm({ items }: { items: WorkloadListItem[] }) {
 
             {importedCount.targets > 0 || importedCount.evidence > 0 ? (
               <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
-                <Badge variant="measured" className="uppercase">
-                  Your measured compute
+                <Badge variant="outline" className="uppercase">
+                  Your imported compute
                 </Badge>
                 <span>
                   {importedCount.targets} imported target{importedCount.targets === 1 ? "" : "s"} and{" "}

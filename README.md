@@ -1,5 +1,13 @@
 # Forgeway
 
+**Forgeway is an open-source workload intelligence layer for heterogeneous AI compute.** It
+evaluates workload requirements, compute capabilities, performance evidence, SLOs, and policy
+to determine where AI workloads should run — which targets are **feasible**, what the predicted
+outcome on each is, how they **rank**, which one it **recommends**, and **why** — including what
+loses and why, and how the recommendation changes under a demand spike or a capacity loss.
+
+> A fresh, independent build — not a fork or port of any prior project. New repo, own history.
+
 [![CI](https://github.com/kvemugennexusai/forgeway/actions/workflows/ci.yml/badge.svg)](https://github.com/kvemugennexusai/forgeway/actions/workflows/ci.yml)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-D22128?logo=apache&logoColor=white)](LICENSE)
 [![Schema forgeway/v0.1](https://img.shields.io/badge/schema-forgeway%2Fv0.1-blue)](docs/schemas.md)
@@ -10,13 +18,78 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript&logoColor=white)](web/package.json)
 [![Last commit](https://img.shields.io/github/last-commit/kvemugennexusai/forgeway)](https://github.com/kvemugennexusai/forgeway/commits/main)
 
-**Forgeway is an open-source workload intelligence layer for heterogeneous AI compute.** It
-evaluates workload requirements, compute capabilities, performance evidence, SLOs, and policy
-to determine where AI workloads should run — which targets are **feasible**, what the predicted
-outcome on each is, how they **rank**, which one it **recommends**, and **why** — including what
-loses and why, and how the recommendation changes under a demand spike or a capacity loss.
+## Try it in two minutes
 
-> A fresh, independent build — not a fork or port of any prior project. New repo, own history.
+No GPU required — this runs the real decision engine against a real, fixture-backed workload
+(the same one the web demo's flagship recommendation is about), not a mock.
+
+```bash
+git clone https://github.com/kvemugennexusai/forgeway
+cd forgeway/api
+python3 -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
+pip install -r requirements.txt
+cd ..
+forgeway analyze examples/workload.yaml
+```
+
+Real output from that exact command:
+
+```
+FORGEWAY PLACEMENT DECISION
+
+Workload:
+  llama-3.1-70b-chat — realtime inference
+
+Recommended:
+  MI300X 192GB
+
+Confidence:
+  MEDIUM
+
+Why:
+  MI300X 192GB meets the 450ms P99 / 1800 tok/s SLO at $5.70/hr — 30.5% less than the current nvidia-h100-dc placement ($8.20/hr), with 78% confidence (objective weights: cost 50% · performance 30% · headroom 20%; confidence requirement 70%).
+
+Current placement:
+  H100 80GB SXM5 — $8.20/hr
+
+Estimated improvement:
+  30.5% lower cost vs. current placement ($8.20/hr → $5.70/hr)
+
+SLO status:
+  MET
+
+Evaluated:
+  H100 80GB SXM5                FEASIBLE
+  L40S 48GB                     REJECTED — 78 GB required (weights + KV cache) exceeds 48 GB/device; tensor-parallel split across devices is not modeled for this target profile
+  MI300X 192GB                  RECOMMENDED
+  Gaudi 3 128GB                 REJECTED — Continuous-batching low-latency serving runtime not qualified for this workload class on Gaudi 3 in the current software-stack snapshot.
+  Trainium2 (trn2)              REJECTED — Neuron SDK realtime continuous-batching serving path not qualified for this workload class in the current release snapshot.
+  Jetson AGX Thor 128GB         REJECTED — 'fp8' is not among the supported precisions on Jetson AGX Thor 128GB (fp16, int8)
+  RTX 6000 Ada (lab bench, 2x)  REJECTED — 78 GB required (weights + KV cache) exceeds 48 GB/device; tensor-parallel split across devices is not modeled for this target profile; 'fp8' is not among the supported precisions on RTX 6000 Ada (lab bench, 2x) (fp16, bf16, int8)
+
+Critical evidence:
+  MI300X 192GB — on-demand price   $2.85/hr per unit    PUBLISHED
+  MI300X 192GB — throughput, this workload 1400 tok/s per replica MODELED
+  MI300X 192GB — P99 latency, this workload 310 ms per replica   MODELED
+
+(No local hardware discovered — evaluated against the fixture catalog only.)
+
+Run `forgeway analyze ... --json` for the full PlacementDecision record.
+```
+
+## Screenshots
+
+<!--
+TODO(human): capture these three screens and drop the images here.
+1. The estate dashboard (`/`) — the Forgeway Insight card showing the
+   MI300X-cheaper-than-H100 callout that's live on first load.
+2. The recommendation detail page (`/recommendations/[id]`) after running
+   `/analyze` on the Llama 3.1 70B workload — the candidate comparison
+   table, with one rejected target's feasibility checklist expanded.
+3. The scenario simulation BEFORE/EVENT/AFTER view (click "Demand Spike"
+   on a recommendation page) — the split-allocation panel showing the
+   40/60 MI300X/H100 split and the change-explanation callout.
+-->
 
 ### Why it exists
 
@@ -45,27 +118,10 @@ guessing.
 either vendor, with only GPU telemetry sampling (`nvidia-smi` vs. `rocm-smi`) actually
 vendor-specific. No Intel or cloud-vendor discovery yet.
 
-**Precise verification status of the AMD/ROCm side** (this is the one place in this README it's
-stated — see [`docs/discovery.md`](docs/discovery.md#verification-status) for the full detail,
-the five states used, and why they're worth being this exact about):
-
-- ROCm hardware discovery, including architecture resolution: **LIVE VERIFIED**, and its test
-  suite is **TESTED WITH CAPTURED REAL OUTPUT** — run against a real AMD Radeon RX 9070 XT over
-  SSH via the actual `forgeway discover` CLI.
-- The ROCm GPU telemetry sampler (`rocm_gpu_sampler.sample_gpu_once()`) and the
-  `run_vllm_bench_latency(gpu_vendor="amd")` dispatch path it's called through — the same
-  code `forgeway bench` itself calls — are now **LIVE VERIFIED**: a real `vllm bench latency`
-  run completed on a real AMD Radeon RX 9070 XT (inside AMD's official `rocm/vllm` Docker
-  image) via `forgeway bench-profile`, capturing a real `peak_gpu_memory_used_mb` reading
-  (15,529.70 MB) alongside real latency/throughput metrics — see
-  [`docs/cross-vendor-validation.md`](docs/cross-vendor-validation.md). The one thing not
-  literally exercised is the plain `forgeway bench` CLI entrypoint itself — a thin wrapper
-  around the exact same now-proven functions, invoked via `forgeway bench-profile` instead in
-  this run — so this is as close to fully verified as this distinction allows.
-- Getting a working ROCm vLLM install remains **materially heavier than NVIDIA's `pip install
-  vllm`** (see [`docs/benchmarking.md`](docs/benchmarking.md#dependencies)) — the live run
-  above used AMD's official `rocm/vllm` Docker image specifically because of that gap, not a
-  plain host install.
+AMD ROCm support — discovery, GPU telemetry sampling, and a real `vllm bench latency` run —
+is live-verified end to end on real AMD hardware. See
+[`docs/discovery.md#verification-status`](docs/discovery.md#verification-status) for the exact
+states used, the evidence behind each claim, and the one remaining thin gap.
 
 See [`ROADMAP.md`](ROADMAP.md) and [`docs/adding-an-accelerator.md`](docs/adding-an-accelerator.md)
 for how a new vendor gets added. The decision engine itself is hardware-agnostic — it scores
@@ -88,10 +144,10 @@ what's vendor-specific.
   [`docs/benchmarking.md`](docs/benchmarking.md#why-vllm-bench-latency-and-what-it-does-and-doesnt-measure)
   before treating a `forgeway bench` number as representative of production serving latency.
 - **AMD/ROCm support is now live-verified end to end** (discovery, GPU telemetry sampling, and
-  a real `vllm bench latency` run all completed on real AMD hardware) — see "What hardware is
-  supported today?" above for the precise breakdown and the one remaining thin gap (the plain
-  `forgeway bench` CLI entrypoint itself vs. the equivalent, already-proven `bench-profile`
-  path). Stated once above, not repeated here.
+  a real `vllm bench latency` run all completed on real AMD hardware) — see
+  [`docs/discovery.md#verification-status`](docs/discovery.md#verification-status) for the
+  precise breakdown and the one remaining thin gap (the plain `forgeway bench` CLI entrypoint
+  itself vs. the equivalent, already-proven `bench-profile` path).
 - **Steps that require real NVIDIA hardware can't be verified on most machines.** `forgeway
   discover`, `forgeway bench`, and the "hardware found" half of `forgeway analyze` all fail
   cleanly (not silently) without an NVIDIA GPU — which is most contributors' and evaluators'

@@ -268,16 +268,23 @@ hit that, the `DiscoveryError` message includes the raw per-card fields it
 saw, which is what's needed to extend `_lookup()`'s field-name list.
 
 **The ROCm GPU telemetry sampler used by `forgeway bench`
-(`rocm_gpu_sampler.sample_gpu_once()`): LIVE VERIFIED, but only as a direct,
-one-off function call — not via the `forgeway bench` CLI or
-`run_vllm_bench_latency()`'s dispatch wrapper, and its own persisted
-automated test suite is still hand-built fixtures, not captured real
-output (unlike this adapter's).** See
-[`docs/benchmarking.md`](benchmarking.md#gpu-vendor-dispatch) for the exact
-breakdown of what was and wasn't verified on the benchmarking side —
-notably, an actual `vllm bench latency` run on ROCm remains **IMPLEMENTED
-BUT NOT LIVE VERIFIED**, since vLLM's ROCm build wasn't installed on the
-test machine.
+(`rocm_gpu_sampler.sample_gpu_once()`), the `run_vllm_bench_latency(...,
+gpu_vendor="amd")` dispatch path it's called through, and an actual `vllm
+bench latency` run on ROCm: all LIVE VERIFIED.** A real run completed end
+to end on the same real AMD Radeon RX 9070 XT (inside AMD's official
+`rocm/vllm` Docker image, via `forgeway bench-profile` — see
+[`docs/cross-vendor-validation.md`](cross-vendor-validation.md)),
+producing a real `PerformanceEvidence` record with a real
+`peak_gpu_memory_used_mb` reading (15,529.70 MB) and real
+latency/throughput metrics. See
+[`docs/benchmarking.md`](benchmarking.md#gpu-vendor-dispatch) for the
+exact breakdown, including the one thing not literally exercised: the
+plain `forgeway bench` CLI entrypoint itself (`cmd_bench`) — a thin
+wrapper around the exact same now-proven functions, invoked via `forgeway
+bench-profile` instead in this run. That sampler function's own persisted
+automated test suite (`api/tests/test_benchmark_rocm_gpu_sampler.py`)
+remains hand-built fixtures, not captured real output, unlike this
+adapter's — the live run proved the code works without changing that file.
 
 ## Failure behavior
 

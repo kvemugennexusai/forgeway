@@ -37,30 +37,68 @@ boundary.
 - A ROCm benchmark path — `forgeway bench` dispatches its GPU telemetry
   sampler by vendor (`nvidia-smi` or `rocm-smi`,
   `api/app/benchmark/rocm_gpu_sampler.py`); the `vllm bench latency` command
-  itself is identical on either vendor. **The sampler function
-  (`sample_gpu_once()`) is LIVE VERIFIED against the same real AMD GPU**
-  (a live power/memory reading came back correctly), but only as a
-  one-off direct call, not via `forgeway bench` itself — its own test
-  suite, the `run_vllm_bench_latency(..., gpu_vendor="amd")` dispatch
-  wrapper around it, and an actual `vllm bench latency` run on ROCm are
-  all **IMPLEMENTED BUT NOT LIVE VERIFIED** — see
-  [`docs/benchmarking.md`](docs/benchmarking.md#gpu-vendor-dispatch) for
-  the exact breakdown. The real install gap this surfaces: `pip install
-  vllm` only gets the CUDA build; ROCm needs vLLM's Docker image or a
-  from-source build against a ROCm PyTorch — not installed on the test
-  machine yet.
+  itself is identical on either vendor. **LIVE VERIFIED end to end** — a
+  real run completed on a real AMD Radeon RX 9070 XT (AMD's official
+  `rocm/vllm` Docker image, via `forgeway bench-profile`), producing a
+  real `PerformanceEvidence` record with a real `peak_gpu_memory_used_mb`
+  reading (15,529.70 MB) — see
+  [`docs/benchmarking.md`](docs/benchmarking.md#gpu-vendor-dispatch) and
+  [`docs/cross-vendor-validation.md`](docs/cross-vendor-validation.md).
+  The one thing not literally exercised is the plain `forgeway bench` CLI
+  entrypoint itself (`cmd_bench`) — a thin wrapper around the exact same
+  now-proven functions, invoked via `forgeway bench-profile` instead. The
+  real install gap this surfaced: `pip install vllm` only gets the CUDA
+  build; the live run used AMD's official `rocm/vllm` Docker image
+  specifically because of that gap.
+- A cross-vendor benchmark profile + comparability policy (`forgeway
+  bench-profile`, `forgeway compare-runs` —
+  [`benchmarks/profiles/llama-8b-cross-vendor-v0.1.yaml`](benchmarks/profiles/llama-8b-cross-vendor-v0.1.yaml),
+  [`docs/benchmarking.md#cross-vendor-benchmark-profiles`](docs/benchmarking.md#cross-vendor-benchmark-profiles)):
+  one versioned workload definition an NVIDIA and an AMD run can both use
+  verbatim, a deterministic `compare_evidence` policy (critical dimensions
+  — model/precision/quantization/concurrency/tensor-parallelism/etc. — vs.
+  soft ones — runtime/driver version, accelerator count), and proof (via
+  synthetic evidence, `api/tests/test_decision_cross_vendor.py`) that the
+  unmodified decision engine already ranks NVIDIA and AMD MEASURED evidence
+  for the same workload with no vendor-specific scoring. **LIVE VERIFIED**
+  — `forgeway bench-profile` ran for real on a real NVIDIA DGX Spark and a
+  real AMD Radeon RX 9070 XT against the identical
+  `qwen2.5-1.5b-cross-vendor` profile, and `forgeway compare-runs`
+  correctly returned `PARTIALLY COMPARABLE` (every critical dimension
+  matched; only vLLM patch version and driver version — both soft —
+  differed, as expected across independently-built vendor images). See
+  [`docs/cross-vendor-validation.md`](docs/cross-vendor-validation.md) for
+  the full story — including why the model changed twice (the primary
+  profile's Llama 3.1 8B is gated; the first open substitute, Qwen2.5 7B,
+  didn't fit the AMD card's 16GB VRAM in bf16 at all) and six real bugs
+  the live run found and fixed. It is now accurate to say Forgeway has
+  been live-validated running the same benchmark profile on NVIDIA and AMD
+  hardware — not yet demonstrated: the 7B/Llama-8B profiles specifically
+  succeeding on this AMD card (the opposite was shown for the 7B one), and
+  a fresh `forgeway analyze` run consuming these exact two saved records
+  (that behavior is proven via synthetic evidence, not live, so far).
 
 ## Next
 
-- **Verify a real `vllm bench latency` run on ROCm** — install a
-  ROCm-capable vLLM on the same AMD test machine (a heavier, separate step
-  from what's been verified so far — see the v0.1 note above) and confirm
-  `run_vllm_bench_latency(..., gpu_vendor="amd")`'s subprocess
-  orchestration and `parser.py`'s assumptions about vLLM's output shape
-  hold up against a live run. This is the one piece of ROCm support still
-  **IMPLEMENTED BUT NOT LIVE VERIFIED**, along with that dispatch
-  wrapper itself and the sampler's own test suite (see the v0.1 note
-  above) — everything else about ROCm discovery is LIVE VERIFIED.
+- **Run `forgeway analyze` against the live cross-vendor evidence pair**
+  captured in `results/nvidia-run.json` / `results/amd-run.json` (see
+  `docs/cross-vendor-validation.md`) — steps 10-15 of that checklist,
+  the one part not yet exercised on top of a real run (proven so far only
+  via `api/tests/test_decision_cross_vendor.py`'s synthetic evidence).
+- **Live-validate the 7B/Llama-8B cross-vendor profiles specifically** —
+  the `qwen2.5-1.5b-cross-vendor` profile proved the pipeline; the larger
+  profiles remain `IMPLEMENTED BUT NOT LIVE VERIFIED` (worse: the 7B one is
+  live-*disproven* on a 16GB AMD card in full bf16 — see
+  `docs/cross-vendor-validation.md`'s "Why the model changed twice"). A
+  quantized or tensor-parallel-split variant, or a bigger-VRAM AMD card,
+  would be the way to actually close this, not more flag-tuning.
+- **Fix `BenchmarkError`'s stderr-truncation UX gap** — a long wrapper
+  traceback can push the real root-cause exception (e.g. a
+  `torch.OutOfMemoryError`) past the last-2000-characters window this
+  session's own debugging kept hitting; see
+  `docs/cross-vendor-validation.md`'s "Real bugs found and fixed" #6 for
+  the concrete repro. Not fixed this pass — flagged for whoever picks it
+  up next.
 - **Additional workloads** — more of the fixture library
   (`api/app/fixtures/workloads.json`) covering other model families and
   workload classes, so the decision engine's feasibility/scoring logic is

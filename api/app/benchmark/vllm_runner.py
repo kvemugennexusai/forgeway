@@ -36,6 +36,7 @@ import tempfile
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Optional
 
 from app.benchmark.errors import BenchmarkError
 from app.benchmark.gpu_sampler import GpuSample, sample_gpu_once
@@ -45,7 +46,13 @@ DEFAULT_ITERATIONS = 3
 DEFAULT_WARMUP_ITERATIONS = 1
 DEFAULT_TIMEOUT_S = 600.0
 DEFAULT_SAMPLE_INTERVAL_S = 1.0
-DEFAULT_PERCENTILES = "50,99"
+# NOTE (live-verified 2026-09-04 against a real vllm 0.19.2rc1.dev134+gfe9c3d6c5
+# install on an NVIDIA DGX Spark): `vllm bench latency` no longer has a
+# --percentiles flag at all — passing one is a hard argument-parsing error.
+# Percentiles (10/25/50/75/90/99) are computed and included in the output
+# JSON's "percentiles" dict unconditionally now. This constant and the flag
+# it used to build are intentionally gone from the command below; kept as a
+# comment, not a silently-stale "used but wrong" constant.
 
 _STDERR_TAIL_CHARS = 2000
 
@@ -54,6 +61,12 @@ _STDERR_TAIL_CHARS = 2000
 class RawBenchmarkResult:
     raw_json: dict
     gpu_samples: list[GpuSample] = field(default_factory=list)
+    # The exact argv this run launched — populated so a caller (e.g.
+    # app.benchmark.cross_vendor) can record the literal command as part of
+    # a richer evidence record, without this module needing to know about
+    # that concern. Empty by default so existing callers/tests that build
+    # RawBenchmarkResult directly (mocks) are unaffected.
+    cmd: list[str] = field(default_factory=list)
 
 
 def is_vllm_available() -> bool:
@@ -72,7 +85,47 @@ def run_vllm_bench_latency(
     sample_interval_s: float = DEFAULT_SAMPLE_INTERVAL_S,
     device_index: int = 0,
     gpu_vendor: str = "nvidia",
+    env: Optional[dict[str, str]] = None,
+    dtype: Optional[str] = None,
+    tensor_parallel_size: Optional[int] = None,
+    quantization: Optional[str] = None,
+    max_model_len: Optional[int] = None,
+    gpu_memory_utilization: Optional[float] = None,
+    enforce_eager: bool = False,
 ) -> RawBenchmarkResult:
+    """`env`, when given, is merged over this process's own environment for
+    the vllm subprocess only — e.g. a benchmark profile's declared
+    materially-affecting variables (app.benchmark.cross_vendor). None
+    (the default) changes nothing about existing behavior.
+
+    `dtype`/`tensor_parallel_size`/`quantization`/`max_model_len` are
+    likewise optional and default to None — omitted from the command
+    entirely (vLLM's own defaults apply) unless given. This is what lets a
+    cross-vendor benchmark profile (app.benchmark.cross_vendor) actually
+    *enforce* precision/tensor-parallelism/quantization identically across
+    vendors rather than merely documenting an intent nothing enforces —
+    without this, two runs could silently differ on exactly the dimensions
+    a fair comparison depends on. `dtype` is vLLM's own flag value (e.g.
+    "bfloat16", not Forgeway's vendor-neutral "bf16") — the caller maps a
+    profile's `precision` field to it; see
+    app.benchmark.cross_vendor._VLLM_DTYPE_BY_PRECISION.
+
+    `gpu_memory_utilization` and `enforce_eager` are deliberately NOT
+    BenchmarkProfile fields — they're per-machine resource/capacity
+    accommodations (how much of *this* device's memory vLLM may claim, and
+    whether to skip CUDA-graph capture), not workload-comparability
+    dimensions, so they're runtime-only overrides here, same as
+    `device_index`. Both were needed in practice, live-verified 2026-09-04:
+    `gpu_memory_utilization` on an NVIDIA DGX Spark's unified-memory system,
+    where vLLM's default (~0.9) exceeded what was actually free ("Free
+    memory on device cuda:0 (60.62/121.69 GiB) ... is less than desired GPU
+    memory utilization (0.92, 111.95 GiB)"); `enforce_eager` on a 16GB AMD
+    RX 9070 XT, where a 7B model's bf16 weights alone (~15.12 GiB) left too
+    little headroom for CUDA-graph capture's compilation buffers
+    (`torch.OutOfMemoryError: HIP out of memory. Tried to allocate 296.00
+    MiB. GPU 0 has a total capacity of 15.92 GiB of which 78.00 MiB is
+    free`) — falling back to eager execution avoids needing that scratch
+    memory at all, at some throughput cost."""
     if not is_vllm_available():
         raise BenchmarkError(
             "vllm is not installed or not on PATH. Install it on a CUDA- or ROCm-capable "
@@ -109,15 +162,27 @@ def run_vllm_bench_latency(
         str(iterations),
         "--num-iters-warmup",
         str(warmup_iterations),
-        "--percentiles",
-        DEFAULT_PERCENTILES,
         "--output-json",
         str(output_path),
     ]
+    if dtype is not None:
+        cmd += ["--dtype", dtype]
+    if tensor_parallel_size is not None:
+        cmd += ["--tensor-parallel-size", str(tensor_parallel_size)]
+    if quantization is not None:
+        cmd += ["--quantization", quantization]
+    if max_model_len is not None:
+        cmd += ["--max-model-len", str(max_model_len)]
+    if gpu_memory_utilization is not None:
+        cmd += ["--gpu-memory-utilization", str(gpu_memory_utilization)]
+    if enforce_eager:
+        cmd += ["--enforce-eager"]
+
+    subprocess_env = {**os.environ, **env} if env else None
 
     try:
         with open(stdout_path, "w") as out_f, open(stderr_path, "w") as err_f:
-            process = subprocess.Popen(cmd, stdout=out_f, stderr=err_f)
+            process = subprocess.Popen(cmd, stdout=out_f, stderr=err_f, env=subprocess_env)
 
             gpu_samples: list[GpuSample] = []
             start = time.monotonic()
@@ -149,4 +214,4 @@ def run_vllm_bench_latency(
         stdout_path.unlink(missing_ok=True)
         stderr_path.unlink(missing_ok=True)
 
-    return RawBenchmarkResult(raw_json=raw_json, gpu_samples=gpu_samples)
+    return RawBenchmarkResult(raw_json=raw_json, gpu_samples=gpu_samples, cmd=cmd)

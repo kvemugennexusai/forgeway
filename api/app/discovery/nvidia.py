@@ -34,6 +34,7 @@ _QUERY_FIELDS = [
 # exhaustive — an unrecognized major version falls back to a labeled
 # "unknown" string rather than a guess. See docs/discovery.md.
 _ARCHITECTURE_BY_COMPUTE_CAP_MAJOR: dict[str, str] = {
+    "12": "blackwell",  # live-verified 2026-09-04: 12.1 on a real NVIDIA GB10 (DGX Spark)
     "9": "hopper",
     "8": "ampere-or-ada",  # 8.0/8.6/8.7 = ampere, 8.9 = ada-lovelace — see note below
     "7": "turing-or-volta",  # 7.5 = turing, 7.0/7.2 = volta
@@ -43,6 +44,7 @@ _ARCHITECTURE_BY_COMPUTE_CAP_MAJOR: dict[str, str] = {
 
 # Compute capabilities specific enough to resolve the 8.x/7.x ambiguity above.
 _ARCHITECTURE_BY_EXACT_COMPUTE_CAP: dict[str, str] = {
+    "12.1": "blackwell",  # live-verified 2026-09-04 against a real NVIDIA GB10
     "8.9": "ada-lovelace",
     "8.7": "ampere",
     "8.6": "ampere",
@@ -120,6 +122,19 @@ def _parse_float(value: str) -> float:
         return 0.0
 
 
+def _is_unreported(value: str) -> bool:
+    """nvidia-smi reports some fields as the literal string "[N/A]" when a
+    driver/architecture doesn't support them — live-verified 2026-09-04:
+    memory.total/used/free all report "[N/A]" on a real NVIDIA GB10 (DGX
+    Spark), a unified CPU+GPU memory system where there is no separate
+    "GPU memory" to report the way discrete GPUs have. _parse_float's
+    generic 0.0-on-parse-failure fallback is fine for a field where 0 can
+    also be a real reading (e.g. idle utilization); it is NOT fine for
+    memory, which must never silently present "unreported" as "zero" —
+    checked explicitly here and called out loudly in `notes` instead."""
+    return value.strip().lower() in {"[n/a]", "n/a"}
+
+
 class NvidiaDiscoveryAdapter(DiscoveryAdapter):
     name = "NVIDIA"
 
@@ -143,6 +158,7 @@ class NvidiaDiscoveryAdapter(DiscoveryAdapter):
                 "GPU machines are not fully modeled in this adapter yet."
             )
 
+        memory_reported = not _is_unreported(first["memory.total"])
         memory_total_gb = _parse_float(first["memory.total"]) / 1024
         avg_gpu_util = sum(_parse_float(r["utilization.gpu"]) for r in rows) / len(rows)
         avg_mem_util = sum(_parse_float(r["utilization.memory"]) for r in rows) / len(rows)
@@ -152,9 +168,19 @@ class NvidiaDiscoveryAdapter(DiscoveryAdapter):
         # size one — exists). Surfaced here as free text, the same treatment
         # already given to driver/CUDA version, rather than silently dropped.
         free_memory_summary = "; ".join(
-            f"GPU {r['index']}: {_parse_float(r['memory.free']) / 1024:.1f}/"
+            f"GPU {r['index']}: not reported by nvidia-smi ('[N/A]')"
+            if _is_unreported(r["memory.total"])
+            else f"GPU {r['index']}: {_parse_float(r['memory.free']) / 1024:.1f}/"
             f"{_parse_float(r['memory.total']) / 1024:.1f} GB free"
             for r in rows
+        )
+        memory_warning = (
+            ""
+            if memory_reported
+            else " memory_gb_per_device below is NOT a real measurement — nvidia-smi "
+            "reported memory as unavailable ('[N/A]'), observed on unified-memory "
+            "systems (e.g. NVIDIA Grace Blackwell/DGX Spark); set it manually before "
+            "using this target in memory-based feasibility checks."
         )
 
         cuda_version = ""
@@ -169,7 +195,7 @@ class NvidiaDiscoveryAdapter(DiscoveryAdapter):
             f"Discovered via nvidia-smi on {hostname} ({os_platform}). "
             f"Driver version: {first['driver_version']}. "
             f"CUDA version: {cuda_version or 'not discoverable'}. "
-            f"Free device memory — {free_memory_summary}. "
+            f"Free device memory — {free_memory_summary}.{memory_warning} "
             "price_per_hr_per_unit is a placeholder — there is no real "
             "hourly cost for locally discovered hardware; set it manually "
             "before using this target in cost-based placement decisions. "

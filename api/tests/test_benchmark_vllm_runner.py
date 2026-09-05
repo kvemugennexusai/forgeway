@@ -25,8 +25,9 @@ def _fake_popen_class(
     output_json: dict | None = None,
 ):
     class _FakePopen:
-        def __init__(self, cmd, stdout=None, stderr=None):
+        def __init__(self, cmd, stdout=None, stderr=None, env=None):
             self.cmd = cmd
+            self.env = env
             self.returncode = returncode
             self._poll_sequence = list(poll_sequence)
             if write_output:
@@ -87,7 +88,7 @@ def test_run_builds_the_expected_command():
     captured_cmd = {}
 
     class _CapturingPopen:
-        def __init__(self, cmd, stdout=None, stderr=None):
+        def __init__(self, cmd, stdout=None, stderr=None, env=None):
             captured_cmd["cmd"] = list(cmd)
             idx = cmd.index("--output-json")
             Path(cmd[idx + 1]).write_text(json.dumps({"avg_latency": 1.0}))

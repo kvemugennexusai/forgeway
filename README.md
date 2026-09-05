@@ -51,13 +51,20 @@ the five states used, and why they're worth being this exact about):
 - ROCm hardware discovery, including architecture resolution: **LIVE VERIFIED**, and its test
   suite is **TESTED WITH CAPTURED REAL OUTPUT** — run against a real AMD Radeon RX 9070 XT over
   SSH via the actual `forgeway discover` CLI.
-- The ROCm GPU telemetry sampler function `rocm_gpu_sampler.sample_gpu_once()`: **LIVE
-  VERIFIED**, but only as a one-off direct call, not through `forgeway bench` itself; its own
-  test suite is still hand-built fixtures, not captured real output.
-- `forgeway bench`'s ROCm dispatch path end-to-end, and an actual `vllm bench latency` run on
-  ROCm: **IMPLEMENTED BUT NOT LIVE VERIFIED** — the test machine didn't have vLLM's ROCm build
-  installed, a materially heavier install than NVIDIA's `pip install vllm` (see
-  [`docs/benchmarking.md`](docs/benchmarking.md#gpu-vendor-dispatch)).
+- The ROCm GPU telemetry sampler (`rocm_gpu_sampler.sample_gpu_once()`) and the
+  `run_vllm_bench_latency(gpu_vendor="amd")` dispatch path it's called through — the same
+  code `forgeway bench` itself calls — are now **LIVE VERIFIED**: a real `vllm bench latency`
+  run completed on a real AMD Radeon RX 9070 XT (inside AMD's official `rocm/vllm` Docker
+  image) via `forgeway bench-profile`, capturing a real `peak_gpu_memory_used_mb` reading
+  (15,529.70 MB) alongside real latency/throughput metrics — see
+  [`docs/cross-vendor-validation.md`](docs/cross-vendor-validation.md). The one thing not
+  literally exercised is the plain `forgeway bench` CLI entrypoint itself — a thin wrapper
+  around the exact same now-proven functions, invoked via `forgeway bench-profile` instead in
+  this run — so this is as close to fully verified as this distinction allows.
+- Getting a working ROCm vLLM install remains **materially heavier than NVIDIA's `pip install
+  vllm`** (see [`docs/benchmarking.md`](docs/benchmarking.md#dependencies)) — the live run
+  above used AMD's official `rocm/vllm` Docker image specifically because of that gap, not a
+  plain host install.
 
 See [`ROADMAP.md`](ROADMAP.md) and [`docs/adding-an-accelerator.md`](docs/adding-an-accelerator.md)
 for how a new vendor gets added. The decision engine itself is hardware-agnostic — it scores
@@ -79,10 +86,11 @@ what's vendor-specific.
   this demo's flagship recommendation is about. See
   [`docs/benchmarking.md`](docs/benchmarking.md#why-vllm-bench-latency-and-what-it-does-and-doesnt-measure)
   before treating a `forgeway bench` number as representative of production serving latency.
-- **AMD/ROCm support is partially live-verified, not fully** — see "What hardware is supported
-  today?" above for the precise, current breakdown (discovery: verified; the telemetry sampler:
-  verified as a standalone call; an actual `vllm bench latency` run on ROCm: not yet). Stated
-  once above, not repeated here.
+- **AMD/ROCm support is now live-verified end to end** (discovery, GPU telemetry sampling, and
+  a real `vllm bench latency` run all completed on real AMD hardware) — see "What hardware is
+  supported today?" above for the precise breakdown and the one remaining thin gap (the plain
+  `forgeway bench` CLI entrypoint itself vs. the equivalent, already-proven `bench-profile`
+  path). Stated once above, not repeated here.
 - **Steps that require real NVIDIA hardware can't be verified on most machines.** `forgeway
   discover`, `forgeway bench`, and the "hardware found" half of `forgeway analyze` all fail
   cleanly (not silently) without an NVIDIA GPU — which is most contributors' and evaluators'
@@ -404,6 +412,36 @@ with one. Pass `--workload-id <id>` to tag it with a real workload id instead, *
 `--model` actually corresponds to that workload** (same family/parameter count) — see
 [`docs/importing-results.md`](docs/importing-results.md#tagging-evidence-with-a-real-workload-id).
 
+### Cross-vendor benchmark profiles
+
+`forgeway bench-profile <profile.yaml>` runs a versioned, fully-specified `BenchmarkProfile` —
+e.g. [`benchmarks/profiles/llama-8b-cross-vendor-v0.1.yaml`](benchmarks/profiles/llama-8b-cross-vendor-v0.1.yaml)
+— so the *same* configuration (model, precision, tensor parallelism, token counts, concurrency)
+can be run on an NVIDIA machine and an AMD machine without silently varying between them.
+`forgeway compare-runs <a.json> <b.json>` then checks whether two such runs are honestly
+comparable (`DIRECTLY COMPARABLE` / `PARTIALLY COMPARABLE` / `NOT COMPARABLE`, with explicit
+reasons) and shows them side by side — it never declares a cost or performance "winner"; that
+requires workload SLOs and objective weights, which is `forgeway analyze`'s job. See
+[`docs/benchmarking.md`](docs/benchmarking.md#cross-vendor-benchmark-profiles) and
+[`docs/cross-vendor-validation.md`](docs/cross-vendor-validation.md) for the full detail.
+
+**Precise status: LIVE VERIFIED.** `forgeway bench-profile` ran for real on both a real NVIDIA
+DGX Spark and a real AMD Radeon RX 9070 XT against the identical profile, and `forgeway
+compare-runs` correctly classified the pair `PARTIALLY COMPARABLE` (every critical dimension —
+model, precision, quantization, tokens, concurrency, tensor parallelism — matched exactly; only
+soft dimensions — vLLM patch version, driver version — differed, as expected across two
+independently-built vendor Docker images). Every piece — profile validation, the comparability
+policy, both vendors' runner classes — is also covered by unit/integration tests using mocked
+subprocess output; the decision-engine ranking behavior specifically is proven via synthetic
+evidence (`api/tests/test_decision_cross_vendor.py`), not by rerunning `forgeway analyze` on
+these two live files. It is accurate to say **"Forgeway has been live-validated running the same
+benchmark profile on NVIDIA and AMD hardware."** The model actually used for this proof was
+`Qwen/Qwen2.5-1.5B-Instruct`, not the primary Llama 3.1 8B profile (gated, no HF credentials on
+either test machine) or even the first open-model substitute, Qwen2.5 7B (its bf16 weights alone
+didn't fit the AMD card's 16 GB VRAM) — see
+[`docs/cross-vendor-validation.md`](docs/cross-vendor-validation.md) for that whole story, the
+exact commands and output, and every real bug the live run surfaced and fixed along the way.
+
 ## CLI: placement analysis
 
 `forgeway analyze` runs **the exact same decision engine the web app uses**
@@ -493,8 +531,11 @@ fixture-driven; two real hardware discovery adapters (`forgeway discover`, local
 and one real benchmark path across both vendors (`forgeway bench`, `vllm bench latency`,
 `provenance: MEASURED`, dispatching its GPU telemetry sampler by vendor — see
 [`docs/benchmarking.md`](docs/benchmarking.md)) — see "What hardware is supported today?" above
-for the precise, current AMD/ROCm verification status (partially live-verified, not fully); the
-placement engine's evidence path is
+for the precise, current AMD/ROCm verification status (now live-verified end to end); a versioned
+cross-vendor benchmark profile plus a comparability policy (`forgeway bench-profile`, `forgeway
+compare-runs` — see "Cross-vendor benchmark profiles" above; live-verified on real NVIDIA+AMD
+hardware, correctly classified `PARTIALLY COMPARABLE` — [`docs/cross-vendor-validation.md`](docs/cross-vendor-validation.md));
+the placement engine's evidence path is
 unified across fixture data and any real, locally saved `forgeway bench` run for a matching
 workload/target (`MEASURED > PUBLISHED > MODELED` — see
 [`docs/decision-engine.md`](docs/decision-engine.md)); `forgeway analyze` exposes that same

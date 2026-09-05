@@ -1,0 +1,95 @@
+# A BenchmarkProfile (forgeway-cross-vendor/v0.1 — see
+# api/app/benchmark/cross_vendor.py::BenchmarkProfile and
+# docs/cross-vendor-validation.md), for:
+#
+#   forgeway bench-profile benchmarks/profiles/llama-8b-cross-vendor-v0.1.yaml
+#
+# Purpose: one tightly-controlled, versioned workload definition that an
+# NVIDIA run and an AMD run can both use verbatim, so the two resulting
+# PerformanceEvidence records are either provably comparable or explicitly
+# marked as not — never silently treated as equivalent. See
+# app.benchmark.cross_vendor.compare_evidence for the exact policy.
+#
+# Model choice: meta-llama/Llama-3.1-8B-Instruct is used deliberately —
+# it's the same model this repo's plain `forgeway bench` path already
+# prioritizes (docs/benchmarking.md), so this profile doesn't introduce a
+# second, differently-reasoned-about model. It IS gated on Hugging Face
+# (requires `huggingface-cli login` or HF_TOKEN with accepted license —
+# see docs/benchmarking.md's Dependencies section); if that's impractical
+# for a given reproduction (e.g. a public CI runner with no HF
+# credentials), the genuinely open, similarly-sized alternative to
+# substitute here is **Qwen/Qwen2.5-7B-Instruct** (Apache-2.0, no gating,
+# no HF login required, natively bf16, no quantization) — swap `model:`
+# below and re-derive `profile_id`/`profile_version` (a different model is
+# a different profile, not a patch to this one) rather than silently
+# treating the two as interchangeable.
+#
+# Which fields Forgeway's benchmark runner (api/app/benchmark/vllm_runner.py
+# via api/app/benchmark/cross_vendor.py::_run_profile) actually passes to
+# `vllm bench latency` as CLI flags, vs. which are recorded for
+# comparability/audit only because vLLM's `bench latency` subcommand has no
+# corresponding flag:
+#
+#   ENFORCED on the command line:
+#     model            -> --model
+#     input_tokens     -> --input-len
+#     output_tokens    -> --output-len
+#     concurrency      -> --batch-size
+#     warmup_runs      -> --num-iters-warmup
+#     measured_runs    -> --num-iters
+#     precision        -> --dtype  (mapped via a small vendor-neutral ->
+#                                    vLLM-dtype table; only for precisions
+#                                    in that table — see
+#                                    _VLLM_DTYPE_BY_PRECISION)
+#     tensor_parallel_degree -> --tensor-parallel-size
+#     quantization     -> --quantization  (omitted entirely when null)
+#     max_model_len    -> --max-model-len (omitted entirely when null)
+#     env_vars         -> merged into the subprocess environment
+#
+#   RECORDED ONLY (no vllm bench latency flag exists for these — still a
+#   critical ComparabilityKey dimension; a mismatch is still flagged, just
+#   not independently enforceable by Forgeway on the command line):
+#     model_revision, tokenizer_version, seed, sampling_params
+#
+# Never verified against a live vLLM installation across both vendors in
+# one sitting until docs/cross-vendor-validation.md's checklist has
+# actually been run end to end — see that file's "what this validates" /
+# "what this does not validate" sections before treating any claim here
+# as more than "implemented, designed for comparability."
+
+profile_id: llama-8b-cross-vendor
+profile_version: "0.1"
+
+model: meta-llama/Llama-3.1-8B-Instruct
+model_revision: null  # not independently pinned this pass — see notes below
+task: text-generation
+runtime: vllm
+runtime_version_constraint: null  # not enforced this pass; record each run's actual vllm version instead (EnvironmentInfo.runtime_version) and treat a mismatch as PARTIALLY_COMPARABLE, not a hard gate
+
+precision: bf16
+quantization: null  # no quantization — full bf16 weights on both vendors
+tensor_parallel_degree: 1
+
+input_tokens: 512
+output_tokens: 128
+concurrency: 1
+batch_behavior: "static single-request batches (--batch-size 1); vllm bench latency's offline generation pass, not a served/concurrent-request workload"
+
+warmup_runs: 1
+measured_runs: 3
+
+seed: 42  # recorded for audit only — vllm bench latency exposes no --seed flag in this benchmark path; both runs are effectively greedy/deterministic per request regardless
+sampling_params:
+  temperature: 0.0  # greedy decoding — vllm bench latency's default behavior, not an actively-set flag
+  top_p: 1.0
+
+tokenizer_version: null  # whatever ships with the pinned model_revision; not independently pinned this pass
+max_model_len: 4096
+
+env_vars: {}  # none required for this profile on either vendor as currently implemented; a vendor-specific run that needs one (e.g. a ROCm attention-kernel toggle) should set it here, not export it ad hoc outside Forgeway, so it's part of the recorded, comparable configuration
+
+notes: >
+  Cross-vendor comparability baseline for Llama 3.1 8B Instruct, bf16, no
+  quantization, tensor_parallel_degree=1, batch size 1, 512 input / 128
+  output tokens. See docs/cross-vendor-validation.md for the exact
+  validation procedure and what a passing run does and does not prove.

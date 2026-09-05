@@ -22,4 +22,11 @@ evidence.py              combines a parsed result + GPU samples + a ComputeTarge
                        into a PerformanceEvidence record
 store.py                  saves/lists benchmark runs under a local results
                        directory (~/.forgeway/benchmarks by default)
+cross_vendor.py            versioned BenchmarkProfile + comparability policy +
+                       CrossVendorEvidenceRecord + BenchmarkRunner
+                       (CudaVllmBenchmarkRunner/RocmVllmBenchmarkRunner) —
+                       `forgeway bench-profile`/`forgeway compare-runs`
+                       (docs/cross-vendor-validation.md). Additive only:
+                       reuses vllm_runner.py/evidence.py completely
+                       unchanged, never duplicates their metric semantics.
 """

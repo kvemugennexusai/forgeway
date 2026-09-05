@@ -60,36 +60,87 @@ it's stated in full — see `docs/discovery.md#verification-status` for the
 five states used and the matching discovery-side status; README.md and
 ROADMAP.md summarize this section rather than restating it independently):**
 
-- **`rocm_gpu_sampler.sample_gpu_once()` (the sampling function itself):
-  LIVE VERIFIED.** Run directly, one-off, over SSH against a real AMD
-  Radeon RX 9070 XT, and it returned a real reading
-  (`GpuSample(power_draw_w=10.0, memory_used_mb=301.6...)`) — confirming
-  both the `rocm-smi -d <index> --showmeminfo vram --showpower --json`
-  query and the field names it parses (`Average Graphics Package Power
-  (W)`, `VRAM Total Used Memory (B)`) against a live device. The same
-  session also validated the ROCm discovery adapter
-  (`docs/discovery.md#verification-status`).
-- **That same function's persisted automated test suite
-  (`api/tests/test_benchmark_rocm_gpu_sampler.py`): IMPLEMENTED BUT NOT
-  LIVE VERIFIED, not "tested with captured real output."** Unlike the
-  discovery adapter's test suite (which now includes a regression test
-  using the real captured JSON verbatim), this suite still uses hand-built
-  fixtures constructed from rocm-smi's documented field names — the real
-  verification above was an ad hoc call, not a change to this file.
-- **`run_vllm_bench_latency(..., gpu_vendor="amd")`'s dispatch wrapper, the
-  `forgeway bench` CLI path end-to-end on ROCm, and
-  `evidence.py`'s `_TELEMETRY_TOOL_BY_VENDOR["amd"]` source-string mapping:
-  IMPLEMENTED BUT NOT LIVE VERIFIED.** The live run above called
-  `sample_gpu_once()` directly, bypassing this wrapper, `cmd_bench`, and
-  the evidence-building step entirely — none of those have been exercised
-  against real hardware, and no test fixture exercises the `vendor="amd"`
-  branch of `_TELEMETRY_TOOL_BY_VENDOR` either (existing evidence tests use
-  `vendor="nvidia"` only).
-- **An actual `vllm bench latency` run on ROCm: IMPLEMENTED BUT NOT LIVE
-  VERIFIED.** The test machine didn't have vLLM's ROCm build installed
-  (see Dependencies below), so neither the subprocess orchestration nor
-  the parser's assumptions about vLLM's output shape have been confirmed
-  against a live ROCm run.
+- **`rocm_gpu_sampler.sample_gpu_once()`, `run_vllm_bench_latency(...,
+  gpu_vendor="amd")`'s full dispatch path (the exact code `forgeway bench`
+  itself calls), and an actual `vllm bench latency` run on ROCm: all LIVE
+  VERIFIED.** A real run completed end to end on a real AMD Radeon RX 9070
+  XT (inside AMD's official `rocm/vllm` Docker image, via `forgeway
+  bench-profile` — see `docs/cross-vendor-validation.md`), producing a
+  real `PerformanceEvidence` record with a real `peak_gpu_memory_used_mb`
+  reading (15,529.70 MB) and real latency/throughput metrics. The one
+  thing not literally exercised is the plain `forgeway bench` CLI
+  entrypoint (`cmd_bench`) itself — a thin wrapper around the exact same
+  now-proven functions, invoked via `forgeway bench-profile` instead in
+  this run.
+- **That same sampler function's persisted automated test suite
+  (`api/tests/test_benchmark_rocm_gpu_sampler.py`) remains IMPLEMENTED BUT
+  NOT LIVE VERIFIED, not "tested with captured real output."** Unlike the
+  discovery adapter's test suite (which includes a regression test using
+  real captured JSON verbatim), this suite still uses hand-built fixtures
+  constructed from rocm-smi's documented field names — the live run above
+  didn't change this file, only proved the code it tests works for real.
+- **`evidence.py`'s `_TELEMETRY_TOOL_BY_VENDOR["amd"]` source-string
+  mapping: LIVE VERIFIED** (exercised for real by the same run above,
+  producing `source` strings naming `rocm-smi`) — its own dedicated test
+  suite (`test_benchmark_evidence.py`) still only covers `vendor="nvidia"`
+  directly, though `test_cross_vendor_runners.py`'s `RocmVllmBenchmarkRunner`
+  tests do exercise the `vendor="amd"` branch with mocked subprocess output.
+
+## Cross-vendor benchmark profiles
+
+`forgeway bench-profile <profile.yaml>` and `forgeway compare-runs <a.json>
+<b.json>` (`api/app/benchmark/cross_vendor.py`) let a single, versioned
+`BenchmarkProfile` — e.g.
+[`benchmarks/profiles/llama-8b-cross-vendor-v0.1.yaml`](../benchmarks/profiles/llama-8b-cross-vendor-v0.1.yaml)
+— drive the *same* `vllm bench latency` configuration on an NVIDIA machine
+and an AMD machine, and then check whether the two resulting evidence
+records are honestly comparable before anyone treats them as such. See
+[`docs/cross-vendor-validation.md`](cross-vendor-validation.md) for the
+full validation procedure.
+
+**Precise status: LIVE VERIFIED.** `forgeway bench-profile` ran for real on
+both a real NVIDIA DGX Spark and a real AMD Radeon RX 9070 XT against the
+identical `qwen2.5-1.5b-cross-vendor` profile, and `forgeway compare-runs`
+correctly classified the pair `PARTIALLY COMPARABLE` — every critical
+dimension matched (model, precision, quantization, tokens, concurrency,
+tensor parallelism); only soft dimensions (vLLM patch version, driver
+version) differed, exactly as expected across two independently-built
+vendor Docker images. `BenchmarkProfile` validation, `compare_evidence`'s
+comparability policy, and both `CudaVllmBenchmarkRunner` /
+`RocmVllmBenchmarkRunner` are also covered by unit and integration tests
+(`api/tests/test_cross_vendor_profile.py`,
+`test_cross_vendor_comparability.py`, `test_cross_vendor_runners.py`,
+`test_cli_bench_profile.py`, `test_decision_cross_vendor.py`) using mocked
+subprocess output — the live run proved the real thing works; the tests
+keep proving it on every future change without needing hardware. See
+`docs/cross-vendor-validation.md` for the full story, including why the
+model changed twice (the gated primary profile, then a 7B open-model
+substitute whose bf16 weights didn't fit the AMD card's 16GB VRAM) and
+every real bug the live run surfaced along the way. It is accurate to say
+**"Forgeway has been live-validated running the same benchmark profile on
+NVIDIA and AMD hardware."** What's *not* separately proven: `forgeway
+analyze`/the decision engine consuming these two specific saved records
+(that behavior is proven via synthetic evidence in
+`test_decision_cross_vendor.py`, not a fresh live run on top of these
+files), and the 7B/Llama-8B profiles running successfully on this
+particular AMD card (the opposite was demonstrated for the 7B one).
+
+Two design points worth being explicit about:
+
+- **Nothing here changes the decision engine.** `app.core.engine` and
+  `app.engine.decision` are untouched — `api/tests/test_decision_cross_vendor.py`
+  proves (with synthetic NVIDIA + AMD `ComputeTarget`/`PerformanceEvidence`
+  pairs) that the existing, unmodified pipeline already ranks two vendors'
+  MEASURED evidence by SLO and objective weights alone, with no
+  vendor-specific scoring anywhere.
+- **`forgeway compare-runs` never declares a winner.** It shows both
+  records' metrics side by side and states comparability explicitly
+  (`DIRECTLY COMPARABLE` / `PARTIALLY COMPARABLE` / `NOT COMPARABLE`, with
+  reasons) — a recommendation requires workload SLOs and objectives, which
+  is `forgeway analyze`'s job, not this command's. Cost is shown only when
+  both sides carry a real, matching `cost_basis`; a freshly discovered
+  target's placeholder pricing (`docs/discovery.md`) means cost is usually
+  reported as "not compared," never guessed into a false winner.
 
 ## Why `vllm bench latency`, and what it does and doesn't measure
 
@@ -114,7 +165,7 @@ the human-readable CLI output and this doc call it out explicitly.
 | Requested | Captured as | How |
 |---|---|---|
 | End-to-end latency | `end_to_end_latency_ms` | vLLM's own reported average latency across `--iterations` timed runs |
-| P50 / P99 | `p50_latency_ms`, `p99_latency_ms` | vLLM's own percentiles, when it reports them (requested via `--percentiles 50,99`) |
+| P50 / P99 | `p50_latency_ms`, `p99_latency_ms` | vLLM's own percentiles — computed and included in its output JSON unconditionally (live-verified 2026-09-04; current vLLM versions have no `--percentiles` flag at all — see `app/benchmark/vllm_runner.py`'s module constants) |
 | Output token throughput | `output_token_throughput_tokens_per_s` | **derived**, not measured directly: `(output_tokens × concurrency) ÷ measured avg latency` — the same arithmetic any latency benchmark uses to turn a stopwatch time into a rate |
 | Request throughput | `request_throughput_requests_per_s` | derived the same way: `concurrency ÷ measured avg latency` |
 | GPU memory usage | `peak_gpu_memory_used_mb` | the peak of real `nvidia-smi`/`rocm-smi` samples (by vendor) polled once per second while the benchmark subprocess runs (not a single before/after snapshot) |
@@ -240,23 +291,21 @@ Override the directory with the `FORGEWAY_BENCH_DIR` environment variable.
 
 ## Reproducibility caveats
 
-- **This runner's JSON parsing has not been verified against a live vLLM
-  installation.** There is no CUDA or ROCm GPU in this repository's
-  development environment, so `api/app/benchmark/parser.py`'s key names
-  (`avg_latency`, `percentiles`) reflect vLLM's documented
-  `vllm bench latency --output-json` shape as best known at the time this
-  was written, not a shape confirmed by actually running it. The parser is
-  written defensively — a missing or renamed key results in that metric
-  being omitted (or, for the one truly required field, a clear
-  `BenchmarkError`), never a fabricated value — but a full schema mismatch
-  in a future vLLM release is a real, plausible risk.
-- **The ROCm telemetry sampler itself is the one exception to the bullet
-  above — see "GPU vendor dispatch" earlier in this doc for the precise,
-  current status** (`rocm_gpu_sampler.sample_gpu_once()` has been LIVE
-  VERIFIED against a real AMD GPU; its persisted test suite and the
-  `forgeway bench` dispatch path around it have not). Stated once there,
-  not repeated here, specifically to avoid this file contradicting itself
-  the way it previously did.
+- **This runner's JSON parsing has now been verified against live vLLM
+  installations on both vendors** (live-verified 2026-09-04, via `forgeway
+  bench-profile` — see `docs/cross-vendor-validation.md`) — see "GPU
+  vendor dispatch" and "Cross-vendor benchmark profiles" earlier in this
+  doc for the precise, current status. `api/app/benchmark/parser.py`'s key
+  names (`avg_latency`, `percentiles`) matched real output exactly on both
+  a real NVIDIA vLLM build and a real ROCm vLLM build; the one real
+  surprise that live run caught was a *removed* CLI flag
+  (`--percentiles`), not a JSON-shape mismatch — see `app/benchmark/vllm_runner.py`'s
+  module constants. The parser remains written defensively regardless — a
+  missing or renamed key results in that metric being omitted (or, for the
+  one truly required field, a clear `BenchmarkError`), never a fabricated
+  value — since a future vLLM release changing this shape again is still a
+  real, plausible risk; two live-verified versions are not a guarantee
+  against a third, different one.
 - **This is exactly why the raw vLLM output is saved alongside the parsed
   record** (`<run_id>.raw_vllm_output.json`) — if a real run's numbers look
   wrong, or `forgeway bench` fails to parse something, that file is the

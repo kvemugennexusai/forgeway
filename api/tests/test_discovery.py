@@ -105,6 +105,7 @@ def test_parse_gpu_rows_raises_on_malformed_line():
 @pytest.mark.parametrize(
     "compute_cap,expected",
     [
+        ("12.1", "blackwell"),  # live-verified 2026-09-04 against a real NVIDIA GB10 (DGX Spark)
         ("9.0", "hopper"),
         ("8.9", "ada-lovelace"),
         ("8.0", "ampere"),
@@ -195,3 +196,34 @@ def test_discover_raises_when_zero_gpus_reported():
     with patch("app.discovery.nvidia._run_query_gpu", return_value=""):
         with pytest.raises(DiscoveryError, match="zero GPUs"):
             NvidiaDiscoveryAdapter().discover()
+
+
+# --------------------------------------------------------------------------
+# Real hardware regression — a real NVIDIA GB10 (DGX Spark) unified-memory
+# system, live-verified 2026-09-04 (docs/discovery.md's future NVIDIA
+# section, once written, should cross-reference this the same way ROCm's
+# does). Captured verbatim via
+# `nvidia-smi --query-gpu=... --format=csv,noheader,nounits`.
+# --------------------------------------------------------------------------
+
+_REAL_GB10_CSV = "0, NVIDIA GB10, [N/A], [N/A], [N/A], 0, 0, 580.173.02, 12.1\n"
+
+
+def test_discover_matches_real_gb10_hardware_unified_memory_not_fabricated():
+    with (
+        patch("app.discovery.nvidia._run_query_gpu", return_value=_REAL_GB10_CSV),
+        patch("app.discovery.nvidia._run_version_banner", return_value=""),
+    ):
+        target = NvidiaDiscoveryAdapter().discover()
+
+    assert target.vendor == "nvidia"
+    assert target.model == "NVIDIA GB10"
+    assert target.architecture == "blackwell"  # resolved from real compute_cap "12.1"
+    # The schema requires a float here — 0.0 is unavoidable — but it must
+    # never be presented as a real reading: this is the regression guard
+    # for that fabrication.
+    assert target.memory_gb_per_device == 0.0
+    assert "NOT a real measurement" in target.notes
+    assert "unified-memory" in target.notes
+    assert "not reported by nvidia-smi" in target.notes
+    assert "GB 0: not reported" not in target.notes  # sanity: not a mangled/half-written sentence

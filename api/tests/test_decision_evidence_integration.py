@@ -247,8 +247,10 @@ def test_a_real_forgeway_bench_run_without_percentiles_is_not_selected(tmp_path,
 
 def test_a_real_forgeway_bench_run_with_percentiles_is_now_selected(tmp_path, monkeypatch):
     """The gap the test above documents is specifically about missing
-    percentile data — when `vllm bench latency --percentiles 50,99`
-    (the default) actually reports a P99, a real forgeway bench run is
+    percentile data — when `vllm bench latency`'s output (percentiles are
+    computed and reported unconditionally by real, current vLLM versions —
+    live-verified 2026-09-04, see app.benchmark.vllm_runner's module
+    constants) actually reports a P99, a real forgeway bench run is
     selectable by the engine like any other MEASURED evidence."""
     monkeypatch.setenv("FORGEWAY_BENCH_DIR", str(tmp_path))
     target = next(t for t in load_compute_targets() if t.id == "amd-mi300x")

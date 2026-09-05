@@ -1,0 +1,66 @@
+# A BenchmarkProfile (forgeway-cross-vendor/v0.1 — see
+# api/app/benchmark/cross_vendor.py::BenchmarkProfile and
+# docs/cross-vendor-validation.md), for:
+#
+#   forgeway bench-profile benchmarks/profiles/qwen2.5-1.5b-cross-vendor-v0.1.yaml
+#
+# This is the small-model variant used for the actual live cross-vendor
+# validation run in docs/cross-vendor-validation.md, after
+# qwen2.5-7b-cross-vendor-v0.1 (itself already the open-model substitute for
+# the gated llama-8b-cross-vendor-v0.1) turned out not to fit the AMD
+# validation machine at all: a 7B model's bf16 weights alone (~15.12 GiB)
+# left no headroom on that card's 15.92 GiB VRAM for any forward pass,
+# `--enforce-eager` included — a genuine hardware capacity limit, not a
+# flag or Forgeway issue. Per the other profiles' own convention, a
+# different model is a different profile, not a patch — hence a third
+# file, not an edit to either existing one.
+#
+# Model choice: Qwen/Qwen2.5-1.5B-Instruct — Apache-2.0, no gating, no HF
+# login required, natively bf16, no quantization, and small enough
+# (~3 GiB in bf16) to run comfortably on every machine this validation
+# checklist has needed so far, including a 16 GiB consumer AMD GPU. This
+# changes the *class* of workload being profiled (a much smaller model)
+# compared to the other two profiles — it does not stand in as evidence
+# for either of them, and should not be cited as if it did.
+#
+# See llama-8b-cross-vendor-v0.1.yaml's own comments for which fields
+# below are enforced as vllm bench latency CLI flags vs. recorded for
+# comparability/audit only — identical for this profile, unchanged here.
+
+profile_id: qwen2.5-1.5b-cross-vendor
+profile_version: "0.1"
+
+model: Qwen/Qwen2.5-1.5B-Instruct
+model_revision: null
+task: text-generation
+runtime: vllm
+runtime_version_constraint: null
+
+precision: bf16
+quantization: null
+tensor_parallel_degree: 1
+
+input_tokens: 512
+output_tokens: 128
+concurrency: 1
+batch_behavior: "static single-request batches (--batch-size 1); vllm bench latency's offline generation pass, not a served/concurrent-request workload"
+
+warmup_runs: 1
+measured_runs: 3
+
+seed: 42
+sampling_params:
+  temperature: 0.0
+  top_p: 1.0
+
+tokenizer_version: null
+max_model_len: 4096
+
+env_vars: {}
+
+notes: >
+  Small-model (1.5B) cross-vendor comparability baseline, used for the live
+  validation run in docs/cross-vendor-validation.md after the 7B variant
+  proved too large to fit the validation checklist's 16GB AMD card at all.
+  Qwen2.5-1.5B-Instruct, bf16, no quantization, tensor_parallel_degree=1,
+  batch size 1, 512 input / 128 output tokens.

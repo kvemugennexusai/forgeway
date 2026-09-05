@@ -16,6 +16,14 @@ from typing import Optional
 
 from app.benchmark.errors import BenchmarkError
 from app.benchmark.evidence import build_performance_evidence
+from app.benchmark.cross_vendor import (
+    CrossVendorEvidenceRecord,
+    ProfileError,
+    compare_evidence,
+    display_status,
+    load_benchmark_profile_yaml,
+    runner_for_target,
+)
 from app.benchmark.parser import parse_vllm_latency_output
 from app.benchmark.store import list_runs, results_dir, save_run
 from app.benchmark.vllm_runner import (
@@ -200,6 +208,185 @@ def cmd_runs(args: argparse.Namespace) -> int:
         print(f"No benchmark runs found in {results_dir()}")
         return 0
     print(format_runs_table(runs))
+    return 0
+
+
+def format_bench_profile_human(record: CrossVendorEvidenceRecord, saved_path: Path) -> str:
+    evidence = record.performance_evidence
+    lines = [
+        "Forgeway cross-vendor benchmark",
+        "",
+        f"  Profile          {record.profile_id} v{record.profile_version}",
+        f"  Vendor / target  {record.target.vendor} — {record.target.model}",
+        f"  Workload id      {evidence.workload_id}"
+        + (
+            ""
+            if evidence.workload_id != record.comparability_key.model
+            else "  (defaulted to the profile's model id; pass --workload-id to tag it as a real Forgeway workload)"
+        ),
+        f"  Run id           {record.run_id}",
+        "",
+    ]
+    for key, label, unit in _BENCH_METRIC_LABELS:
+        metric = evidence.metrics.get(key)
+        if metric is not None:
+            lines.append(f"  {label:<24} {metric.value:.2f} {unit}")
+    lines.append("")
+    lines.append(
+        "  TTFT: not measured by this benchmark path — vllm bench latency measures\n"
+        "  full-completion latency, not streaming. See docs/benchmarking.md."
+    )
+    lines.append("")
+    lines.append(f"Saved to {saved_path}")
+    lines.append(
+        "Run `forgeway compare-runs <this file> <another vendor's file>` to check comparability "
+        "and see both side by side."
+    )
+    lines.append("Run `forgeway bench-profile ... --json` for the full CrossVendorEvidenceRecord.")
+    return "\n".join(lines)
+
+
+def cmd_bench_profile(args: argparse.Namespace) -> int:
+    try:
+        profile = load_benchmark_profile_yaml(Path(args.profile_path))
+    except ProfileError as e:
+        print(f"forgeway bench-profile: {e}", file=sys.stderr)
+        return 1
+
+    try:
+        target = run_discovery()
+    except DiscoveryError as e:
+        print(f"forgeway bench-profile: {e}", file=sys.stderr)
+        return 1
+
+    try:
+        runner = runner_for_target(target)
+    except ProfileError as e:
+        print(f"forgeway bench-profile: {e}", file=sys.stderr)
+        return 1
+
+    run_id = f"bench-profile-{uuid.uuid4().hex[:12]}"
+    try:
+        record = runner.run(
+            profile,
+            target,
+            run_id=run_id,
+            workload_id=args.workload_id,
+            device_index=args.device_index,
+            gpu_memory_utilization=args.gpu_memory_utilization,
+            timeout_s=args.timeout_s,
+            enforce_eager=args.enforce_eager,
+        )
+    except BenchmarkError as e:
+        print(f"forgeway bench-profile: {e}", file=sys.stderr)
+        return 1
+
+    # The plain PerformanceEvidence also lands in ~/.forgeway/benchmarks (or
+    # FORGEWAY_BENCH_DIR) exactly as `forgeway bench` already does — so this
+    # run is automatically picked up by `forgeway analyze`/the decision
+    # engine (app.engine.evidence_gateway) with no separate wiring, the same
+    # way any other real benchmark run is (docs/decision-engine.md).
+    save_run(record.performance_evidence)
+
+    output_path = Path(args.output) if args.output else results_dir() / f"{run_id}.cross_vendor.json"
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(record.model_dump_json(indent=2) + "\n")
+
+    if args.json:
+        print(record.model_dump_json(indent=2))
+    else:
+        print(format_bench_profile_human(record, output_path))
+    return 0
+
+
+_COMPARE_METRIC_LABELS: list[tuple[str, str, str]] = [
+    ("end_to_end_latency_ms", "Latency (end-to-end)", "ms"),
+    ("output_token_throughput_tokens_per_s", "Throughput", "tok/s"),
+    ("peak_gpu_memory_used_mb", "Memory (peak)", "MB"),
+    ("avg_gpu_power_draw_w", "Power (avg)", "W"),
+]
+
+
+def _load_cross_vendor_record(path: Path) -> CrossVendorEvidenceRecord:
+    if not path.exists():
+        raise ProfileError(f"file not found: {path}")
+    try:
+        return CrossVendorEvidenceRecord.model_validate_json(path.read_text())
+    except ValueError as e:
+        raise ProfileError(f"{path} is not a valid CrossVendorEvidenceRecord: {e}") from e
+
+
+def format_compare_runs(a: CrossVendorEvidenceRecord, b: CrossVendorEvidenceRecord) -> str:
+    """Compares two evidence records and shows them side by side.
+    Deliberately does not declare a "winner" — that requires workload
+    objectives/SLOs, which is `forgeway analyze`'s job (see
+    docs/cross-vendor-validation.md), not this command's."""
+    verdict = compare_evidence(a, b)
+    label_a = f"{a.target.vendor.upper()} {a.target.model}"
+    label_b = f"{b.target.vendor.upper()} {b.target.model}"
+
+    lines = [
+        "FORGEWAY CROSS-VENDOR EVIDENCE COMPARISON",
+        "",
+        "Profile:",
+        f"  {a.profile_id} v{a.profile_version}"
+        + ("" if a.profile_id == b.profile_id and a.profile_version == b.profile_version else " (differs from the second record — see reasons below)"),
+        "",
+        "Comparability:",
+        f"  {display_status(verdict.status)}",
+    ]
+    if verdict.reasons:
+        lines.append("  Reasons:")
+        lines.extend(f"    - {reason}" for reason in verdict.reasons)
+    lines.append("")
+    lines.append(f"  A: {label_a}  ({a.run_id})")
+    lines.append(f"  B: {label_b}  ({b.run_id})")
+    lines.append("")
+
+    col_a = f"{a.target.vendor.upper():<14}"
+    col_b = f"{b.target.vendor.upper():<14}"
+    header = f"  {'Metric':<24} {col_a} {col_b}"
+    lines.append(header)
+    lines.append("  " + "-" * (len(header) - 2))
+    for key, label, unit in _COMPARE_METRIC_LABELS:
+        metric_a = a.performance_evidence.metrics.get(key)
+        metric_b = b.performance_evidence.metrics.get(key)
+        val_a = f"{metric_a.value:.2f} {unit}" if metric_a is not None else "n/a"
+        val_b = f"{metric_b.value:.2f} {unit}" if metric_b is not None else "n/a"
+        lines.append(f"  {label:<24} {val_a:<14} {val_b:<14}")
+
+    lines.append("")
+    if a.cost_basis == "not_available" or b.cost_basis == "not_available":
+        lines.append(
+            "Cost: not compared — at least one side has no recorded cost basis "
+            "(cost_basis='not_available'; see docs/cross-vendor-validation.md's cost-normalization note)."
+        )
+    else:
+        cost_a = a.target.price_per_hr_per_unit.value
+        cost_b = b.target.price_per_hr_per_unit.value
+        lines.append(
+            f"Cost: A ${cost_a:.2f}/hr ({a.cost_basis}) vs. B ${cost_b:.2f}/hr ({b.cost_basis}) "
+            "— shown for reference only; no winner is declared here (see `forgeway analyze` for a "
+            "workload-objective-aware recommendation)."
+        )
+    lines.append("")
+    lines.append(
+        "This command compares evidence only — it does not recommend a placement. "
+        "Run `forgeway analyze` with both runs' evidence saved to see how workload SLOs and "
+        "objective weights would actually rank these targets."
+    )
+    return "\n".join(lines)
+
+
+def cmd_compare_runs(args: argparse.Namespace) -> int:
+    try:
+        a = _load_cross_vendor_record(Path(args.evidence_a))
+        b = _load_cross_vendor_record(Path(args.evidence_b))
+    except ProfileError as e:
+        print(f"forgeway compare-runs: {e}", file=sys.stderr)
+        return 1
+
+    print(format_compare_runs(a, b))
     return 0
 
 
@@ -430,6 +617,65 @@ def build_parser() -> argparse.ArgumentParser:
 
     runs_parser = subparsers.add_parser("runs", help="List locally stored benchmark runs.")
     runs_parser.set_defaults(func=cmd_runs)
+
+    bench_profile_parser = subparsers.add_parser(
+        "bench-profile",
+        help="Run a versioned BenchmarkProfile (e.g. for a cross-vendor comparison) against local hardware.",
+    )
+    bench_profile_parser.add_argument(
+        "profile_path",
+        help="Path to a BenchmarkProfile YAML file (see benchmarks/profiles/llama-8b-cross-vendor-v0.1.yaml).",
+    )
+    bench_profile_parser.add_argument(
+        "--workload-id",
+        default=None,
+        help="Tag the saved evidence with an existing Forgeway workload id, same as `forgeway bench --workload-id` "
+        "— see docs/importing-results.md.",
+    )
+    bench_profile_parser.add_argument(
+        "--device-index", type=int, default=0, help="GPU index to target and sample telemetry from (default: %(default)s)."
+    )
+    bench_profile_parser.add_argument(
+        "--timeout-s",
+        type=float,
+        default=None,
+        help="Give up if the benchmark hasn't finished within this many seconds (default: same as "
+        "`forgeway bench`'s, %(default)s meaning DEFAULT_TIMEOUT_S — see app.benchmark.vllm_runner). "
+        "A cold model download/first-compile can legitimately need more than the default 600s.",
+    )
+    bench_profile_parser.add_argument(
+        "--gpu-memory-utilization",
+        type=float,
+        default=None,
+        help="Fraction of this device's memory vLLM may claim — a per-machine resource override, not part of the "
+        "profile (vLLM's own default applies if omitted). Needed in practice on unified-memory systems where the "
+        "default can exceed what's actually free.",
+    )
+    bench_profile_parser.add_argument(
+        "--enforce-eager",
+        action="store_true",
+        help="Skip CUDA-graph capture — a per-machine resource override, not part of the profile. Needed in "
+        "practice when a model's weights alone leave too little VRAM headroom for graph-capture's compilation "
+        "buffers (real HIP/CUDA out-of-memory errors during profiling, not KV-cache sizing).",
+    )
+    bench_profile_parser.add_argument(
+        "--output",
+        default=None,
+        help="Path to save the full CrossVendorEvidenceRecord JSON (default: alongside `forgeway bench`'s own "
+        "results directory, named <run_id>.cross_vendor.json).",
+    )
+    bench_profile_parser.add_argument(
+        "--json", action="store_true", help="Emit the full CrossVendorEvidenceRecord JSON instead of text."
+    )
+    bench_profile_parser.set_defaults(func=cmd_bench_profile)
+
+    compare_runs_parser = subparsers.add_parser(
+        "compare-runs",
+        help="Compare two saved CrossVendorEvidenceRecord files (e.g. an NVIDIA run and an AMD run) side by side.",
+    )
+    compare_runs_parser.add_argument("evidence_a", help="Path to the first CrossVendorEvidenceRecord JSON file.")
+    compare_runs_parser.add_argument("evidence_b", help="Path to the second CrossVendorEvidenceRecord JSON file.")
+    compare_runs_parser.set_defaults(func=cmd_compare_runs)
 
     analyze_parser = subparsers.add_parser(
         "analyze", help="Run the placement decision engine against a YAML-defined workload."

@@ -1,0 +1,223 @@
+{
+  "schema_version": "forgeway-cross-vendor/v0.1",
+  "run_id": "bench-profile-d25112f0e27a",
+  "profile_id": "qwen2.5-1.5b-cross-vendor",
+  "profile_version": "0.1",
+  "target": {
+    "schema_version": "forgeway/v0.1",
+    "id": "local-amd-2c2f28ae4a9b",
+    "vendor": "amd",
+    "model": "AMD Radeon RX 9070 XT",
+    "tier": "lab",
+    "location": "local (2c2f28ae4a9b)",
+    "architecture": "rdna4",
+    "memory_gb_per_device": 15.9,
+    "interconnect": "not probed",
+    "supported_precisions": [],
+    "capacity_units_total": 1,
+    "capacity_units_allocated": 0,
+    "runtime_support": null,
+    "price_per_hr_per_unit": {
+      "value": 0.0,
+      "confidence": 0.0,
+      "provenance": "MODELED",
+      "range_low": null,
+      "range_high": null,
+      "source": "No pricing available for locally discovered hardware.",
+      "evidence_reference": null
+    },
+    "status": "healthy",
+    "unsupported_workload_classes": [],
+    "notes": "Discovered via rocm-smi on 2c2f28ae4a9b (Linux-7.0.0-30-generic-x86_64-with-glibc2.39). Driver version: 7.0.0. Unique ID: 0x4fbbc7e605b44800. Free device memory — GPU 0: 15.7/15.9 GB free. price_per_hr_per_unit is a placeholder — there is no real hourly cost for locally discovered hardware; set it manually before using this target in cost-based placement decisions. supported_precisions is not auto-detected in this adapter — set it manually based on this GPU's known capabilities.",
+    "observed_gpu_utilization_pct": 4.0,
+    "observed_memory_utilization_pct": 1.1,
+    "discovered_at": "2026-09-04T22:44:42.133737Z",
+    "free_capacity_units": 1,
+    "utilization_pct": 0.0,
+    "accelerator_count": 1
+  },
+  "environment": {
+    "runtime": "vllm",
+    "runtime_version": "0.19.1.dev3+rocm7.13.0.g72ed2b398.d20260513",
+    "torch_version": "2.10.0+rocm7.13.0rc2",
+    "os": "Linux-7.0.0-30-generic-x86_64-with-glibc2.39",
+    "kernel": "7.0.0-30-generic",
+    "cpu_model": "x86_64",
+    "driver_version": "7.0.0"
+  },
+  "performance_evidence": {
+    "schema_version": "forgeway/v0.1",
+    "compute_target_id": "local-amd-2c2f28ae4a9b",
+    "workload_id": "Qwen/Qwen2.5-1.5B-Instruct",
+    "configuration": "vllm bench latency: input_len=512, output_len=128, batch_size=1",
+    "metrics": {
+      "end_to_end_latency_ms": {
+        "value": 792.8,
+        "confidence": 95.0,
+        "provenance": "MEASURED",
+        "range_low": null,
+        "range_high": null,
+        "source": "vllm bench latency, model=Qwen/Qwen2.5-1.5B-Instruct",
+        "evidence_reference": null
+      },
+      "output_token_throughput_tokens_per_s": {
+        "value": 161.45,
+        "confidence": 95.0,
+        "provenance": "MEASURED",
+        "range_low": null,
+        "range_high": null,
+        "source": "derived: (output_tokens * concurrency) / measured avg latency",
+        "evidence_reference": null
+      },
+      "request_throughput_requests_per_s": {
+        "value": 1.2614,
+        "confidence": 95.0,
+        "provenance": "MEASURED",
+        "range_low": null,
+        "range_high": null,
+        "source": "derived: concurrency / measured avg latency",
+        "evidence_reference": null
+      },
+      "p10_latency_ms": {
+        "value": 791.16,
+        "confidence": 95.0,
+        "provenance": "MEASURED",
+        "range_low": null,
+        "range_high": null,
+        "source": "vllm bench latency, model=Qwen/Qwen2.5-1.5B-Instruct",
+        "evidence_reference": null
+      },
+      "p25_latency_ms": {
+        "value": 791.66,
+        "confidence": 95.0,
+        "provenance": "MEASURED",
+        "range_low": null,
+        "range_high": null,
+        "source": "vllm bench latency, model=Qwen/Qwen2.5-1.5B-Instruct",
+        "evidence_reference": null
+      },
+      "p50_latency_ms": {
+        "value": 792.49,
+        "confidence": 95.0,
+        "provenance": "MEASURED",
+        "range_low": null,
+        "range_high": null,
+        "source": "vllm bench latency, model=Qwen/Qwen2.5-1.5B-Instruct",
+        "evidence_reference": null
+      },
+      "p75_latency_ms": {
+        "value": 793.78,
+        "confidence": 95.0,
+        "provenance": "MEASURED",
+        "range_low": null,
+        "range_high": null,
+        "source": "vllm bench latency, model=Qwen/Qwen2.5-1.5B-Instruct",
+        "evidence_reference": null
+      },
+      "p90_latency_ms": {
+        "value": 794.56,
+        "confidence": 95.0,
+        "provenance": "MEASURED",
+        "range_low": null,
+        "range_high": null,
+        "source": "vllm bench latency, model=Qwen/Qwen2.5-1.5B-Instruct",
+        "evidence_reference": null
+      },
+      "p99_latency_ms": {
+        "value": 795.02,
+        "confidence": 95.0,
+        "provenance": "MEASURED",
+        "range_low": null,
+        "range_high": null,
+        "source": "vllm bench latency, model=Qwen/Qwen2.5-1.5B-Instruct",
+        "evidence_reference": null
+      },
+      "throughput_tokens_per_s_per_replica": {
+        "value": 161.45,
+        "confidence": 95.0,
+        "provenance": "MEASURED",
+        "range_low": null,
+        "range_high": null,
+        "source": "derived: (output_tokens * concurrency) / measured avg latency",
+        "evidence_reference": null
+      },
+      "p99_latency_ms_per_replica": {
+        "value": 795.02,
+        "confidence": 95.0,
+        "provenance": "MEASURED",
+        "range_low": null,
+        "range_high": null,
+        "source": "vllm bench latency, model=Qwen/Qwen2.5-1.5B-Instruct",
+        "evidence_reference": null
+      },
+      "peak_gpu_memory_used_mb": {
+        "value": 15529.7,
+        "confidence": 90.0,
+        "provenance": "MEASURED",
+        "range_low": null,
+        "range_high": null,
+        "source": "rocm-smi, sampled during the run (n=825)",
+        "evidence_reference": null
+      },
+      "avg_gpu_power_draw_w": {
+        "value": 13.0,
+        "confidence": 85.0,
+        "provenance": "MEASURED",
+        "range_low": null,
+        "range_high": null,
+        "source": "rocm-smi, averaged over samples during the run (n=825)",
+        "evidence_reference": null
+      }
+    },
+    "provenance": "MEASURED",
+    "confidence": 85.0,
+    "source": "vllm bench latency (offline, single-node, no server)",
+    "timestamp": "2026-09-04T22:59:15.463331Z",
+    "forgeway_version": "0.1.0",
+    "benchmark_run_id": "bench-profile-d25112f0e27a"
+  },
+  "comparability_key": {
+    "profile_id": "qwen2.5-1.5b-cross-vendor",
+    "profile_version": "0.1",
+    "model": "Qwen/Qwen2.5-1.5B-Instruct",
+    "model_revision": null,
+    "precision": "bf16",
+    "quantization": null,
+    "input_tokens": 512,
+    "output_tokens": 128,
+    "concurrency": 1,
+    "tensor_parallel_degree": 1,
+    "runtime_family": "vllm",
+    "benchmark_mode": "vllm bench latency (offline, single-node, no server)",
+    "warmup_policy": "warmup_runs=1,measured_runs=3",
+    "measurement_methodology": "vllm bench latency (offline, single-node, no server)"
+  },
+  "raw_command": [
+    "vllm",
+    "bench",
+    "latency",
+    "--model",
+    "Qwen/Qwen2.5-1.5B-Instruct",
+    "--input-len",
+    "512",
+    "--output-len",
+    "128",
+    "--batch-size",
+    "1",
+    "--num-iters",
+    "3",
+    "--num-iters-warmup",
+    "1",
+    "--output-json",
+    "/tmp/forgeway-vllm-bench-z_yc9a5s.json",
+    "--dtype",
+    "bfloat16",
+    "--tensor-parallel-size",
+    "1",
+    "--max-model-len",
+    "4096"
+  ],
+  "cost_basis": "not_available",
+  "forgeway_version": "0.1.0",
+  "timestamp": "2026-09-04T22:59:15.467349Z"
+}

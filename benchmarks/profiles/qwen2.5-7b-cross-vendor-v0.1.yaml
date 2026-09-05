@@ -1,0 +1,62 @@
+# A BenchmarkProfile (forgeway-cross-vendor/v0.1 — see
+# api/app/benchmark/cross_vendor.py::BenchmarkProfile and
+# docs/cross-vendor-validation.md), for:
+#
+#   forgeway bench-profile benchmarks/profiles/qwen2.5-7b-cross-vendor-v0.1.yaml
+#
+# This is the open-model variant of
+# benchmarks/profiles/llama-8b-cross-vendor-v0.1.yaml, used for the actual
+# live cross-vendor validation run recorded in
+# docs/cross-vendor-validation.md: at the time of that run, neither
+# validation machine had Hugging Face credentials configured, and the
+# primary profile's model (meta-llama/Llama-3.1-8B-Instruct) is gated.
+# Per that profile's own comments, a different model is a different
+# profile, not a patch to it — hence a separate file with its own
+# profile_id, not an edit to llama-8b-cross-vendor's `model:` field.
+#
+# Model choice: Qwen/Qwen2.5-7B-Instruct — Apache-2.0, no gating, no HF
+# login required, natively bf16, no quantization, similarly sized (7B vs.
+# 8B) to the primary profile's model, so this substitution changes the
+# licensing situation only, not the class of workload being profiled.
+#
+# See llama-8b-cross-vendor-v0.1.yaml's own comments for which fields
+# below are enforced as vllm bench latency CLI flags vs. recorded for
+# comparability/audit only — identical for this profile, unchanged here.
+
+profile_id: qwen2.5-7b-cross-vendor
+profile_version: "0.1"
+
+model: Qwen/Qwen2.5-7B-Instruct
+model_revision: null
+task: text-generation
+runtime: vllm
+runtime_version_constraint: null
+
+precision: bf16
+quantization: null
+tensor_parallel_degree: 1
+
+input_tokens: 512
+output_tokens: 128
+concurrency: 1
+batch_behavior: "static single-request batches (--batch-size 1); vllm bench latency's offline generation pass, not a served/concurrent-request workload"
+
+warmup_runs: 1
+measured_runs: 3
+
+seed: 42
+sampling_params:
+  temperature: 0.0
+  top_p: 1.0
+
+tokenizer_version: null
+max_model_len: 4096
+
+env_vars: {}
+
+notes: >
+  Open-model (no HF gating) cross-vendor comparability baseline, used for
+  the live validation run in docs/cross-vendor-validation.md in place of
+  llama-8b-cross-vendor-v0.1 because neither validation machine had HF
+  credentials configured. Qwen2.5-7B-Instruct, bf16, no quantization,
+  tensor_parallel_degree=1, batch size 1, 512 input / 128 output tokens.

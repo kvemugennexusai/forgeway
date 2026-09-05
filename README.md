@@ -1,5 +1,6 @@
 # Forgeway
 
+[![CI](https://github.com/kvemugennexusai/forgeway/actions/workflows/ci.yml/badge.svg)](https://github.com/kvemugennexusai/forgeway/actions/workflows/ci.yml)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-D22128?logo=apache&logoColor=white)](LICENSE)
 [![Schema forgeway/v0.1](https://img.shields.io/badge/schema-forgeway%2Fv0.1-blue)](docs/schemas.md)
 [![FastAPI](https://img.shields.io/badge/FastAPI-%3E%3D0.115-009688?logo=fastapi&logoColor=white)](api/pyproject.toml)

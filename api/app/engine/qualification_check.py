@@ -27,11 +27,20 @@ _CHECK_NAME = "qualification: databank record"
 #: is ever actually populated by a discovery adapter.
 _ONLY_REAL_RUNTIME = "vllm"
 
-#: QualificationSubject.model is normally an exact model id (matching
-#: BenchmarkProfile.model) — "*" is the documented wildcard meaning "any
-#: model," used by general, workload-class-level facts (this check, and
-#: any hand-authored record meant to apply regardless of model).
+#: QualificationSubject.model/.precision are normally an exact model id
+#: and precision string (matching BenchmarkProfile's own fields) — "*" is
+#: the documented wildcard meaning "any model"/"any precision," used by
+#: general, workload-class-level facts (this check, and any hand-authored
+#: record meant to apply regardless of model/precision). Precision is
+#: deliberately wildcarded here, not taken from the workload: precision
+#: *compatibility* is already its own, independent check
+#: (app.core.engine.feasibility's "architecture: precision/runtime
+#: compatible") — this check is about workload-class software
+#: qualification, the same "unrelated facts, unrelated reasons" axis
+#: ComputeTarget.unsupported_workload_classes already keeps precision-
+#: agnostic, and this check mirrors that scope exactly.
 ANY_MODEL = "*"
+ANY_PRECISION = "*"
 
 
 def coarse_qualification_subject(workload: Workload, target: ComputeTarget) -> QualificationSubject:
@@ -40,7 +49,7 @@ def coarse_qualification_subject(workload: Workload, target: ComputeTarget) -> Q
         hardware_model=target.model,
         runtime=_ONLY_REAL_RUNTIME,
         model=ANY_MODEL,
-        precision=workload.precision,
+        precision=ANY_PRECISION,
         workload_class=workload.workload_class,
     )
 

@@ -88,6 +88,13 @@ class QualificationSubject(BaseModel):
     #: hand-authored record meant to apply regardless of model), never by
     #: a real measured/smoke-tested claim about one specific model.
     model: str
+    #: Normally an exact precision string (matching BenchmarkProfile.
+    #: precision, e.g. "fp8"). "*" (app.engine.qualification_check.
+    #: ANY_PRECISION) is the same documented wildcard as `model` above,
+    #: for the same reason: precision *compatibility* is already its own
+    #: independent check (app.core.engine.feasibility), so a general
+    #: workload-class-level qualification fact is deliberately
+    #: precision-agnostic.
     precision: str
     deployment_config: dict = Field(default_factory=dict)
     workload_class: WorkloadClass

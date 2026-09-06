@@ -13,7 +13,10 @@ candidate's performance numbers come from* changed.
 
 ```
 1-2. Load workload, load compute targets.        (unchanged)
-3.   Evaluate hard compatibility.                 (unchanged — app/core/engine/feasibility.py)
+3.   Evaluate hard compatibility.                 (app/core/engine/feasibility.py, unchanged, PLUS
+                                                    one additive databank check appended by the
+                                                    caller — app/engine/qualification_check.py — NEW,
+                                                    see "Qualification databank" below)
 4.   Return explicit rejection reasons.           (unchanged)
 5.   Retrieve the prediction for a feasible target:
        a. Gather every PerformanceEvidence candidate for this
@@ -34,6 +37,26 @@ Step 5 is the only thing that changed: it used to read exactly one
 `PerformanceProfile` fixture row per (workload, target) pair; it now reads
 *every* `PerformanceEvidence` candidate available for that pair and picks
 one.
+
+## Qualification databank
+
+Step 3 gained one more, additive `FeasibilityCheck` — same "unrelated
+facts, unrelated reasons" discipline `app/core/engine/feasibility.py`'s
+own checks already follow — consulting the qualification databank
+(`app.qualification.store`, `docs/qualification.md`) instead of
+`ComputeTarget.unsupported_workload_classes`. Built in
+`app/engine/qualification_check.py`, not inside
+`app/core/engine/feasibility.py` itself: `app.core` is proven decoupled
+from any I/O source (`api/tests/test_core_isolation.py`), and the
+databank is real filesystem I/O — the same reason evidence gathering
+lives in `app/engine/evidence_gateway.py` (below), not `app.core`.
+
+Deliberately coarse: it only ever matches a general, model-agnostic,
+config-agnostic qualification record (`QualificationSubject.model="*"`,
+`precision="*"`, `deployment_config={}`, `slo=None`). A record from a real
+`forgeway qualify` run — which pins a specific model, precision, and
+deployment config — is a different, more specific subject and is never
+consulted here; see `docs/qualification.md`'s "What's deferred" section.
 
 ## Where evidence comes from
 

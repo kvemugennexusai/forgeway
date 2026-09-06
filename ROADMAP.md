@@ -109,6 +109,18 @@ boundary.
   shared, queryable store of `PerformanceEvidence` across runs, machines,
   or contributors exists yet. This is the natural next step once there's
   more than one benchmark path feeding it.
+- **Consult `measured_pass`/`measured_fail` qualification records in the
+  decision engine** — they're config-pinned and SLO-pinned by design
+  (`docs/qualification.md`), stored and inspectable via
+  `forgeway qualifications` but not yet consulted by `forgeway analyze`.
+  Doing this correctly means extending
+  `app.core.engine.evidence_selection`'s comparability rule (today: "has
+  the required metric keys," nothing about precision/config/workload
+  class) — already flagged as deferred in `docs/decision-engine.md`.
+- **Migrate Gaudi 3's `unsupported_workload_classes` claim** the same way
+  Trainium2's was (`docs/qualification.md`'s worked example) — left
+  untouched this pass to keep that change reviewable, not because the
+  claim is any more verifiable.
 
 ## Later
 
@@ -130,6 +142,14 @@ boundary.
   different workload class (small-footprint edge inference) than this
   demo's current datacenter LLM-serving fixtures, so it likely wants its
   own fixture workload(s) to be meaningful, not just a new discovery path.
+- **A real `RuntimeChecker` for a runtime beyond vLLM** (e.g. Neuron/
+  Trainium's own inference stack) — `app.qualification.checker` only ships
+  `VllmRuntimeChecker` today; a runtime with no checker can only ever
+  reach `unknown` (no record) or a hand-authored record via
+  `forgeway qualify-import`, never a real staged `smoke_tested`/
+  `measured_*` result (`docs/qualification.md`). Needs real hardware
+  access for that vendor to build and verify against, same constraint
+  that's kept a second discovery/benchmark vendor beyond AMD on this list.
 
 ## Not planned
 

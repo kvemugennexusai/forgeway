@@ -279,8 +279,17 @@ def test_hard_checks_reject_incompatible_targets_with_distinct_reasons():
     assert by_id["intel-gaudi3"].feasible is False
     assert "runtime" in by_id["intel-gaudi3"].rejection_reason.lower()
 
+    # Trainium2's hard-compatibility checks (workload class included) all
+    # pass as of the qualification-records migration (Phase 2 WP6) — its
+    # old unsupported_workload_classes entry asserted a Neuron SDK
+    # behavior claim with no verifiable source, now honestly downgraded
+    # to a QualificationRecord in the "unknown" state
+    # (api/app/fixtures/qualifications.json). It's still rejected, but for
+    # the real, unrelated reason: no PerformanceEvidence on file for it at
+    # all (api/app/fixtures/performance_profiles.json has no entry for
+    # aws-trainium2), not an invented vendor-behavior claim.
     assert by_id["aws-trainium2"].feasible is False
-    assert "neuron" in by_id["aws-trainium2"].rejection_reason.lower()
+    assert "no trustworthy performance evidence" in by_id["aws-trainium2"].rejection_reason.lower()
 
     assert by_id["nvidia-l40s"].feasible is False
     assert "gb" in by_id["nvidia-l40s"].rejection_reason.lower()

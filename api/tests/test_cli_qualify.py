@@ -286,6 +286,7 @@ def test_qualify_import_reports_missing_file_cleanly(tmp_path, monkeypatch, caps
 
 def test_qualifications_reports_empty_databank(tmp_path, monkeypatch, capsys):
     monkeypatch.setenv("FORGEWAY_QUALIFICATION_DIR", str(tmp_path / "empty"))
+    monkeypatch.setattr(store, "_FIXTURES_PATH", tmp_path / "no-fixture-here.json")  # isolate from the real bundled fixture
     exit_code = main(["qualifications"])
     assert exit_code == 0
     assert "No qualification records found" in capsys.readouterr().out

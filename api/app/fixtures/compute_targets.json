@@ -118,13 +118,7 @@
       "source": "Cloud on-demand list price, trn2 instance, captured 2026-08"
     },
     "status": "healthy",
-    "unsupported_workload_classes": [
-      {
-        "workload_class": "realtime-inference",
-        "reason": "Neuron SDK realtime continuous-batching serving path not qualified for this workload class in the current release snapshot."
-      }
-    ],
-    "notes": "Neuron SDK is qualified for training and batch inference. Realtime continuous-batching serving path is not qualified in this fixture's software-stack snapshot."
+    "notes": "Whether the Neuron SDK's realtime continuous-batching serving path is qualified for this workload class is tracked as a QualificationRecord (api/app/fixtures/qualifications.json), not asserted here — see docs/qualification.md. A previous version of this fixture asserted it as unsupported fact with no verifiable source; downgraded to honestly unknown pending real verification against a pinned SDK version."
   },
   {
     "id": "nvidia-jetson-thor",

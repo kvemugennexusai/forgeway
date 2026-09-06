@@ -528,6 +528,22 @@ didn't fit the AMD card's 16 GB VRAM) — see
 [`docs/cross-vendor-validation.md`](docs/cross-vendor-validation.md) for that whole story, the
 exact commands and output, and every real bug the live run surfaced and fixed along the way.
 
+## CLI: qualification records
+
+Whether a workload even *runs* on a piece of hardware is a different kind
+of fact from how confident Forgeway is in a measured number — kept in its
+own schema, `QualificationRecord`, rather than squeezed into a `Metric`'s
+confidence. `forgeway qualify <profile.yaml> --workload-class <class>`
+checks the qualification databank first (a bundled fixture + a local
+directory, merged) and only runs a staged check (runtime present → device
+reachable → config supported → smoke test passed) if nothing's there yet;
+`forgeway qualify-import <record.json>` saves a hand-authored record;
+`forgeway qualifications` lists the databank. One additive check in
+`forgeway analyze`'s hard-compatibility checklist consults it. See
+[`docs/qualification.md`](docs/qualification.md) — including the worked
+example of un-asserting a previously hardcoded, unsourced vendor-behavior
+claim (Trainium2's old realtime-inference rejection reason).
+
 ## CLI: placement analysis
 
 `forgeway analyze` runs **the exact same decision engine the web app uses**

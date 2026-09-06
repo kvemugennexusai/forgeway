@@ -1,1 +1,27 @@
-[]
+[
+  {
+    "schema_version": "forgeway/v0.1",
+    "id": "qual-04df96edc5b6fb41537f6581",
+    "subject": {
+      "vendor": "aws",
+      "hardware_model": "Trainium2 (trn2)",
+      "architecture": null,
+      "runtime": "vllm",
+      "runtime_version": null,
+      "backend": null,
+      "model": "*",
+      "precision": "*",
+      "deployment_config": {},
+      "workload_class": "realtime-inference",
+      "slo": null
+    },
+    "state": "unknown",
+    "stages": [],
+    "source": "No verifiable, citable Neuron SDK documentation was found to back the previous claim (\"Neuron SDK realtime continuous-batching serving path not qualified for this workload class\"), which this fixture had asserted as fact with no source, timestamp, or evidence link. Downgraded to honestly unknown pending real verification against a pinned Neuron SDK version and a real forgeway qualify run (docs/qualification.md) — see api/app/fixtures/compute_targets.json's Trainium2 entry for the same note.",
+    "environment": "n/a — no staged check has been run for this subject; this is a hand-authored record (forgeway qualify-import), not an automated result.",
+    "evidence_reference": null,
+    "timestamp": "2026-09-06T00:00:00Z",
+    "review_date": null,
+    "notes": "Worked example of un-asserting an unverifiable vendor-behavior claim (Phase 2 WP6) — see docs/qualification.md."
+  }
+]

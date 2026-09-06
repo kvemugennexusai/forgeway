@@ -80,6 +80,7 @@ def test_saving_the_same_subject_again_overwrites_not_duplicates(tmp_path, monke
 
 def test_local_records_skip_unparseable_files_instead_of_crashing(tmp_path, monkeypatch):
     monkeypatch.setenv("FORGEWAY_QUALIFICATION_DIR", str(tmp_path))
+    monkeypatch.setattr(store, "_FIXTURES_PATH", tmp_path / "no-fixture-here.json")  # isolate from the real bundled fixture
     store.save_qualification(_record(_subject()))
     (tmp_path / "not-a-record.json").write_text("{not valid json")
 

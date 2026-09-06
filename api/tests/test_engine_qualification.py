@@ -13,7 +13,12 @@ from datetime import date
 from app.core.engine.feasibility import evaluate_feasibility
 from app.core.schemas import SLO, ComputeTarget, CurrentPlacement, EnterprisePolicy, Metric, Workload
 from app.core.schemas.v0_1.qualification import QualificationRecord
-from app.engine.qualification_check import ANY_MODEL, coarse_qualification_subject, evaluate_databank_qualification
+from app.engine.qualification_check import (
+    ANY_MODEL,
+    ANY_PRECISION,
+    coarse_qualification_subject,
+    evaluate_databank_qualification,
+)
 from app.qualification import store
 
 
@@ -73,11 +78,21 @@ def _record(workload: Workload, target: ComputeTarget, **overrides) -> Qualifica
 # --------------------------------------------------------------------------
 
 
-def test_coarse_subject_uses_the_any_model_wildcard():
+def test_coarse_subject_uses_the_any_model_and_any_precision_wildcards():
     subject = coarse_qualification_subject(_workload(), _target())
     assert subject.model == ANY_MODEL
+    assert subject.precision == ANY_PRECISION
     assert subject.deployment_config == {}
     assert subject.slo is None
+
+
+def test_coarse_subject_ignores_the_workloads_actual_precision():
+    """Precision compatibility is a separate, independent check
+    (app.core.engine.feasibility) — two workloads that differ only in
+    precision must resolve to the same coarse qualification subject."""
+    fp8 = coarse_qualification_subject(_workload(precision="fp8"), _target())
+    int8 = coarse_qualification_subject(_workload(precision="int8"), _target())
+    assert fp8 == int8
 
 
 # --------------------------------------------------------------------------
@@ -87,7 +102,11 @@ def test_coarse_subject_uses_the_any_model_wildcard():
 
 def test_no_record_passes_and_does_not_block(tmp_path, monkeypatch):
     monkeypatch.setenv("FORGEWAY_QUALIFICATION_DIR", str(tmp_path))
-    check = evaluate_databank_qualification(_workload(), _target())
+    # A vendor/hardware combination genuinely absent from both the local
+    # store and the real bundled fixture (unlike the default _target(),
+    # aws-trainium2, which now has a real fixture record — see the
+    # dedicated test for that below).
+    check = evaluate_databank_qualification(_workload(), _target(vendor="faux", hardware_model="Faux Accelerator"))
     assert check.passed is True
     assert "no qualification record" in check.detail
 
@@ -199,3 +218,21 @@ def test_both_checks_run_independently_in_evaluate_feasibility(tmp_path, monkeyp
     # No databank record exists — the new check passes independently of
     # the legacy one's failure.
     assert databank_check.passed is True
+
+
+def test_real_trainium2_fixture_record_is_honestly_unknown_not_unsupported(tmp_path, monkeypatch):
+    """WP6's migration: api/app/fixtures/qualifications.json carries an
+    honest "unknown" record for aws-trainium2/realtime-inference,
+    replacing the unverifiable "unsupported" claim removed from
+    compute_targets.json's own unsupported_workload_classes."""
+    from app.data.loader import get_compute_target
+
+    monkeypatch.setenv("FORGEWAY_QUALIFICATION_DIR", str(tmp_path))  # isolate the local layer only
+    target = get_compute_target("aws-trainium2")
+    assert target is not None
+    assert target.unsupported_workload_classes == []
+
+    check = evaluate_databank_qualification(_workload(workload_class="realtime-inference"), target)
+
+    assert check.passed is True
+    assert "not yet checked" in check.detail

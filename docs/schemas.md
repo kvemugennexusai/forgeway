@@ -191,18 +191,22 @@ staged checking pipeline, and the databank it's stored in.
 | `architecture` | `Optional[str]` | |
 | `runtime`, `runtime_version` | `str`, `Optional[str]` | e.g. `"vllm"`, a pinned version — mirrors `BenchmarkProfile.runtime`/`EnvironmentInfo.runtime_version` (`app/benchmark/cross_vendor.py`) |
 | `backend` | `Optional[str]` | e.g. `"cuda"`/`"rocm"` — mirrors `EnvironmentInfo.backend` |
-| `model`, `precision` | `str` | |
+| `model`, `precision` | `str` | normally exact (matching `BenchmarkProfile.model`/`.precision`); `"*"` is a documented wildcard meaning "any model"/"any precision," used only by general, workload-class-level facts (`app.engine.qualification_check.ANY_MODEL`/`ANY_PRECISION`) |
 | `deployment_config` | `dict` | tensor-parallel degree, quantization, etc. — deliberately open, mirrors `BenchmarkProfile`'s own narrow-but-open fields |
 | `workload_class` | `"realtime-inference" \| "batch-inference" \| "training"` | |
 | `slo` | `Optional[SLO]` | **part of the subject's identity** — a general "does this run at all" fact (`slo=None`) and a "does it meet this exact SLO" fact are different subjects, never conflated |
 
 ### Known v0.1 limitation
 
-`app.core.engine.feasibility.evaluate_feasibility()` only consults
-`QualificationRecord`s at coarse granularity (`vendor` + `hardware_model` +
-`precision` + `workload_class`, `deployment_config == {}` and `slo is
-None`) — the same granularity `unsupported_workload_classes` already
-operates at. `measured_pass`/`measured_fail` records (config-pinned,
+`app.engine.qualification_check.evaluate_databank_qualification()` (not
+`app.core.engine.feasibility` itself — `app.core` is proven decoupled
+from any I/O source, `api/tests/test_core_isolation.py`) only consults
+`QualificationRecord`s at coarse granularity: `vendor` + `hardware_model`
++ `workload_class`, with `model="*"`, `precision="*"`,
+`deployment_config == {}`, and `slo is None` — the same granularity
+`unsupported_workload_classes` already operates at (precision-agnostic:
+precision *compatibility* is already its own independent feasibility
+check). `measured_pass`/`measured_fail` records (config-pinned,
 SLO-pinned) are stored and inspectable via `forgeway qualifications` but
 not yet consulted by the decision engine — see
 [`docs/qualification.md`](qualification.md#whats-deferred).

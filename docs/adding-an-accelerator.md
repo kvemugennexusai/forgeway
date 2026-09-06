@@ -94,6 +94,23 @@ codebase should need to change to add a new one.
    follows. Update `README.md`'s "What hardware is supported today"
    line and `ROADMAP.md`.
 
+## A related but separate seam: qualification checking
+
+Discovery answers "is this hardware present"; it says nothing about
+whether a given runtime/model/precision/config actually *works* on it for
+a given workload class — that's `app.qualification.checker.RuntimeChecker`
+(`docs/qualification.md`), a small ABC mirroring `DiscoveryAdapter`'s own
+conventions (one class per runtime, no registry, never guess a fact you
+haven't actually verified). `VllmRuntimeChecker` is the only real
+implementation today. A new accelerator with no vLLM support at all (e.g.
+one that needs its own inference runtime) has no automated way to reach
+`smoke_tested`/`measured_pass`/`measured_fail` yet — the only honest state
+reachable is `unknown`, hand-authored via `forgeway qualify-import` citing
+a real source if you have one, or left unrecorded (the databank's absence
+of a record already means "nobody has checked," the correct default).
+Writing a real `RuntimeChecker` for a new runtime is future work, not a
+requirement for adding a new `DiscoveryAdapter`.
+
 ## What you don't need to touch
 
 - `app/data/loader.py`, `app/state.py`, the web UI — discovery output

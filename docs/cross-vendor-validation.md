@@ -355,6 +355,14 @@ prebuilt Docker image. `PARTIALLY COMPARABLE` is the *correct* output
 here, not a shortfall — it's the policy working as designed on a real,
 non-synthetic pair for the first time.
 
+*(Recorded verbatim as this run actually happened, on the schema at the
+time. A later, additive change taught `compare_evidence` to also check
+execution backend — cuda vs rocm — as a third soft dimension; re-running
+this exact NVIDIA/AMD pair today would report that as a third reason
+alongside the two above, still `PARTIALLY COMPARABLE`, never
+`NOT COMPARABLE` — see `docs/cross-vendor-validation.md`'s comparability
+policy in `api/app/benchmark/cross_vendor.py`.)*
+
 `peak_gpu_memory_used_mb` is present on the AMD side (a real `rocm-smi`
 sample, 15529.70 MB — nearly the whole 16 GiB card, consistent with the
 earlier 7B OOM's finding that this card runs close to its limit) and

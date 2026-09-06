@@ -21,7 +21,8 @@ $ forgeway bench \
   supported-platform details. `forgeway bench` uses whichever
   `forgeway discover` finds first to pick both the compute target and the
   matching GPU telemetry sampler (`nvidia-smi` or `rocm-smi` — see "GPU
-  vendor dispatch" below).
+  vendor dispatch" below), or a specific one named by `--target-id` (an id
+  from `forgeway discover --all` — see `docs/discovery.md#discovering-every-target`).
 - **Runtime:** [vLLM](https://github.com/vllm-project/vllm) only, via its
   `vllm bench latency` subcommand — the command itself is identical on
   either vendor; only the *install* of vLLM differs (see Dependencies).
@@ -141,6 +142,19 @@ Two design points worth being explicit about:
   both sides carry a real, matching `cost_basis`; a freshly discovered
   target's placeholder pricing (`docs/discovery.md`) means cost is usually
   reported as "not compared," never guessed into a false winner.
+- **A differing execution backend is a caveat, not a hard block.** Each
+  record's `environment.backend` (`"cuda"` for NVIDIA, `"rocm"` for AMD —
+  Forgeway's own vendor-neutral label, distinct from `runtime`/`runtime
+  family`, which names the framework, vLLM) is checked as a soft
+  comparability dimension: differing backends downgrade an otherwise-
+  `DIRECTLY COMPARABLE` pair to `PARTIALLY COMPARABLE` with an explicit
+  reason, never to `NOT COMPARABLE` by themselves. `environment` also
+  records the *effective* per-machine `--gpu-memory-utilization` /
+  `--enforce-eager` overrides actually used for the run, separately from
+  `BenchmarkProfile`'s *requested* configuration — those two overrides
+  have no profile field of their own (see below) precisely because
+  they're per-machine accommodations, not part of what two runs must
+  agree on to be comparable.
 
 ## Why `vllm bench latency`, and what it does and doesn't measure
 

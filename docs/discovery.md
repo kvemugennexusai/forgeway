@@ -76,9 +76,13 @@ behavior against mocked `nvidia-smi` output.
 
 **Local NVIDIA CUDA-capable and AMD ROCm-capable systems** — one machine,
 discovered by running on it directly. `forgeway discover` tries each
-adapter's `is_available()` in order (NVIDIA, then AMD ROCm — see
-`api/app/cli/main.py`'s `ADAPTERS` list) and uses the first one whose
-tooling is present. Explicitly out of scope for this pass: Intel, AWS
+adapter, in order (NVIDIA, then AMD ROCm — see `api/app/cli/main.py`'s
+`ADAPTERS` list), and returns the first one that actually produces a
+target — an adapter whose tooling isn't present is skipped, and one that's
+present but fails doesn't stop a later adapter from being tried (see
+"Failure behavior" below). `forgeway discover --all` reports every
+adapter's result instead of just the first. Explicitly out of scope for
+this pass: Intel, AWS
 Trainium/Inferentia, Jetson-specific behavior (see `ROADMAP.md`'s "Later"
 section — Jetson boards are integrated SoCs and need their own
 `tegrastats`/`jtop`-based adapter, not a variant of either adapter here),
@@ -301,7 +305,54 @@ $ echo $?
 
 No traceback, ever — a `DiscoveryError` is the only expected failure mode
 and is always caught and reported as a single line to stderr with exit
-code 1. Any other unexpected exception is also caught at the top level of
-the CLI (`app/cli/main.py::main`) and reported the same way, as a safety
-net — it should never happen, but a bug in an adapter still shouldn't
-produce an unreadable stack trace for someone just trying to run the tool.
+code 1.
+
+**Adapter failures are isolated from each other.** `app.discovery.adapter.
+discover_all()` runs every registered adapter independently: one adapter
+raising, hanging, or returning something malformed never stops the others
+from being tried. A hung adapter is bounded by a 30-second default
+timeout. If nothing at all was found, whatever each adapter's failure was
+is folded into the one-line `DiscoveryError` message above (e.g. `Checked:
+NVIDIA, AMD ROCm. ... Errors: NVIDIA: nvidia-smi exited with code 1: ...`)
+instead of just naming which adapters were checked. This replaced an
+earlier version of `run_discovery()` where an adapter that was available
+but failed *during* discovery (as opposed to simply not being installed)
+could stop a later, working adapter from ever being tried, and could
+surface as `app/cli/main.py::main`'s generic "unexpected error" safety net
+instead of a clean discovery-specific message. That safety net still
+exists for genuinely unrelated bugs elsewhere in the CLI, but adapter
+failures are no longer expected to reach it.
+
+## Discovering every target
+
+Plain `forgeway discover` returns the first target any adapter finds — the
+example at the top of this page. `forgeway discover --all` instead runs
+every registered adapter and reports every target found, plus any adapter
+errors, without stopping at the first one:
+
+```
+$ forgeway discover --all
+Forgeway discovery: all targets
+
+  [0] local-nvidia-gpu-box-01
+      Vendor / model   nvidia — NVIDIA H100 80GB HBM3
+      Devices          1
+      Memory / device  79.6 GB
+
+Run `forgeway discover --all --json` for the full record, or `forgeway bench --target-id <id>` / `forgeway bench-profile ... --target-id <id>` to benchmark a specific discovered target.
+```
+
+`forgeway discover --all --json` emits a separate, additively-versioned
+record — `schema_version: "forgeway-discover-all/v0.1"`, a `targets` array
+and an `errors` array — rather than reusing `"forgeway/v0.1"`'s single-
+object shape above. This is deliberate: plain `forgeway discover --json`'s
+output is a stable contract the web app's `/import` flow parses by hand
+(`web/components/import/import-panel.tsx`), and `--all` is additive
+tooling on top, not a replacement for it.
+
+Pair `--all` with `--target-id` on `forgeway bench` / `forgeway
+bench-profile` to benchmark a specific discovered target (by its `id`)
+instead of whichever one plain discovery would have picked — useful once
+more than one adapter finds something, e.g. a machine with both an NVIDIA
+GPU and a ROCm-visible integrated GPU. See
+[`docs/benchmarking.md`](benchmarking.md).

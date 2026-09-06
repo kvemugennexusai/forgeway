@@ -468,6 +468,11 @@ cd api && source .venv/bin/activate
 forgeway discover
 ```
 
+`forgeway discover --all` reports every adapter's result instead of stopping at the first —
+useful once more than one is present — and pairs with `--target-id` on `forgeway bench` /
+`bench-profile` (below) to benchmark a specific one. One adapter failing never suppresses the
+others; see [`docs/discovery.md`](docs/discovery.md#discovering-every-target).
+
 ## CLI: benchmarking
 
 `forgeway bench` runs one LLM inference benchmark — `vllm bench latency`, prioritizing
@@ -481,6 +486,9 @@ caveats.
 ```bash
 forgeway bench --model meta-llama/Llama-3.1-8B-Instruct --input-tokens 512 --output-tokens 128 --concurrency 1
 ```
+
+Pass `--target-id <id>` (an id from `forgeway discover --all`) to benchmark a specific discovered
+target instead of whichever one plain discovery would pick — omit it to keep the default above.
 
 The saved evidence's `workload_id` defaults to `--model` — never a real Forgeway workload id, so
 never selectable by the placement engine for any workload (see below), but also never colliding
@@ -497,8 +505,10 @@ can be run on an NVIDIA machine and an AMD machine without silently varying betw
 `forgeway compare-runs <a.json> <b.json>` then checks whether two such runs are honestly
 comparable (`DIRECTLY COMPARABLE` / `PARTIALLY COMPARABLE` / `NOT COMPARABLE`, with explicit
 reasons) and shows them side by side — it never declares a cost or performance "winner"; that
-requires workload SLOs and objective weights, which is `forgeway analyze`'s job. See
-[`docs/benchmarking.md`](docs/benchmarking.md#cross-vendor-benchmark-profiles) and
+requires workload SLOs and objective weights, which is `forgeway analyze`'s job. A differing
+execution backend (e.g. NVIDIA's CUDA vs. AMD's ROCm) is one of the dimensions checked — always
+`PARTIALLY COMPARABLE` with an explicit caveat when it differs, never an automatic hard block by
+itself. See [`docs/benchmarking.md`](docs/benchmarking.md#cross-vendor-benchmark-profiles) and
 [`docs/cross-vendor-validation.md`](docs/cross-vendor-validation.md) for the full detail.
 
 **Precise status: LIVE VERIFIED.** `forgeway bench-profile` ran for real on both a real NVIDIA

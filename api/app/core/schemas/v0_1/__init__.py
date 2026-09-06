@@ -1,6 +1,6 @@
 """forgeway/v0.1 — Forgeway's formal, versioned data contracts.
 
-Four concepts, matching docs/schemas.md:
+Five concepts, matching docs/schemas.md:
 
   ComputeTarget       app.core.schemas.compute.ComputeTarget, unchanged in
                       place — it was already this codebase's one canonical
@@ -17,11 +17,14 @@ Four concepts, matching docs/schemas.md:
                       definition now lives in app.core.schemas proper
                       (this module just re-exports it, same as
                       ComputeTarget and AIWorkload below).
-  PlacementDecision   new: a vendor-neutral summary of one placement
-                      decision, built via
-                      PlacementDecision.from_candidates().
+  PlacementDecision   a vendor-neutral summary of one placement decision,
+                      built via PlacementDecision.from_candidates().
+  QualificationRecord new: a sourced, dated, evidence-linked fact about
+                      whether one specific hardware+runtime+model+
+                      precision+config+workload/SLO combination actually
+                      works — see docs/qualification.md.
 
-Every one of the four carries `schema_version == "forgeway/v0.1"`. See
+Every one of the five carries `schema_version == "forgeway/v0.1"`. See
 docs/schemas.md for field-level documentation and examples/ for
 serialized instances.
 """
@@ -35,6 +38,13 @@ from app.core.schemas.v0_1.placement_decision import (
     PlacementDecision,
     RejectedTarget,
     ScoreBreakdown,
+)
+from app.core.schemas.v0_1.qualification import (
+    QualificationRecord,
+    QualificationStage,
+    QualificationStageResult,
+    QualificationState,
+    QualificationSubject,
 )
 from app.core.schemas.workload import Workload as AIWorkload
 
@@ -50,4 +60,9 @@ __all__ = [
     "ScoreBreakdown",
     "ImprovementVsCurrentPlacement",
     "EvidenceReference",
+    "QualificationRecord",
+    "QualificationSubject",
+    "QualificationState",
+    "QualificationStage",
+    "QualificationStageResult",
 ]

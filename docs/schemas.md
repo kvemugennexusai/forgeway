@@ -1,12 +1,14 @@
 # Forgeway data contracts — forgeway/v0.1
 
-This formalizes the four vendor-neutral data contracts behind Forgeway's
+This formalizes the five vendor-neutral data contracts behind Forgeway's
 [reusable core](architecture.md): **ComputeTarget**,
-**AIWorkload**, **PerformanceEvidence**, and **PlacementDecision**. Every
-one carries `schema_version: "forgeway/v0.1"`. Code lives in
-`api/app/core/schemas/v0_1/`; serialized instances are in
-[`examples/`](../examples/); validation tests are in
-`api/tests/test_v0_1_schemas.py`.
+**AIWorkload**, **PerformanceEvidence**, **PlacementDecision**, and
+**QualificationRecord**. Every one carries `schema_version:
+"forgeway/v0.1"`. Code lives in `api/app/core/schemas/v0_1/`; serialized
+instances are in [`examples/`](../examples/); validation tests are in
+`api/tests/test_v0_1_schemas.py` (`QualificationRecord`'s own are in
+`api/tests/test_qualification_schema.py` — see
+[`docs/qualification.md`](qualification.md)).
 
 ## Migration approach
 
@@ -34,6 +36,14 @@ treats them differently, on purpose:
   `from_*()` converter that takes exactly what the engine already computes
   and produces the formal, versioned record. Nothing in `app.core.engine`
   or `app.engine.decision` changed to support this.
+- **QualificationRecord** — not a migration at all: no prior implicit form
+  of this concept existed. The closest thing was
+  `ComputeTarget.unsupported_workload_classes`, a hand-authored
+  `{workload_class, reason}` blob with no source, timestamp, or evidence
+  link — kept as-is (still consulted by its own, unrelated feasibility
+  check) rather than folded into this new type, since not every existing
+  entry has a verifiable source to migrate honestly. See
+  [`docs/qualification.md`](qualification.md).
 
 "Migration is working" is proven in `api/tests/test_v0_1_schemas.py` by
 running the real core pipeline against the real demo fixtures and checking
@@ -149,6 +159,54 @@ target was ranked #1 outright; a split scenario currently yields
 today. A future schema version can add it once there's a concrete second
 consumer that needs it.
 
+## 5. QualificationRecord
+
+`api/app/core/schemas/v0_1/qualification.py`. A sourced, dated,
+evidence-linked fact about whether one specific combination — hardware,
+runtime and version, model, precision, deployment configuration, and
+workload/SLO — actually works, kept deliberately separate from `Metric`'s
+measurement-uncertainty `confidence`. See
+[`docs/qualification.md`](qualification.md) for the full rationale, the
+staged checking pipeline, and the databank it's stored in.
+
+| Field | Type | Notes |
+|---|---|---|
+| `schema_version` | `"forgeway/v0.1"` | |
+| `id` | `str` | `qual-<subject.subject_key()>` — deterministic from the subject, so the same combination always resolves to the same record (`QualificationRecord.for_subject()`) |
+| `subject` | `QualificationSubject` | see below — the exact combination this record is about, never a whole vendor |
+| `state` | `"unknown" \| "unsupported" \| "smoke_tested" \| "measured_pass" \| "measured_fail"` | see docs/qualification.md's state table |
+| `stages` | `list[QualificationStageResult]` (`stage`, `passed`, `detail`) | every stage of the staged pipeline that actually ran, not just the first failure — mirrors `FeasibilityCheck`'s convention |
+| `source` | `str` | required on every record — where this fact came from (a citable doc, or "smoke test run \<id\>") |
+| `environment` | `str` | required — free text, same best-effort convention as `ComputeTarget.notes` |
+| `evidence_reference` | `Optional[str]` | required (and validated) when `state` is `measured_pass`/`measured_fail` |
+| `timestamp` | `datetime` | defaults to now at construction |
+| `review_date` | `Optional[date]` | revalidate by this date; `None` means no expiry tracked — never defaulted to an invented cadence |
+| `notes` | `str` | |
+
+`QualificationSubject`:
+
+| Field | Type | Notes |
+|---|---|---|
+| `vendor`, `hardware_model` | `str` | a class of hardware, not one discovered `ComputeTarget` instance |
+| `architecture` | `Optional[str]` | |
+| `runtime`, `runtime_version` | `str`, `Optional[str]` | e.g. `"vllm"`, a pinned version — mirrors `BenchmarkProfile.runtime`/`EnvironmentInfo.runtime_version` (`app/benchmark/cross_vendor.py`) |
+| `backend` | `Optional[str]` | e.g. `"cuda"`/`"rocm"` — mirrors `EnvironmentInfo.backend` |
+| `model`, `precision` | `str` | |
+| `deployment_config` | `dict` | tensor-parallel degree, quantization, etc. — deliberately open, mirrors `BenchmarkProfile`'s own narrow-but-open fields |
+| `workload_class` | `"realtime-inference" \| "batch-inference" \| "training"` | |
+| `slo` | `Optional[SLO]` | **part of the subject's identity** — a general "does this run at all" fact (`slo=None`) and a "does it meet this exact SLO" fact are different subjects, never conflated |
+
+### Known v0.1 limitation
+
+`app.core.engine.feasibility.evaluate_feasibility()` only consults
+`QualificationRecord`s at coarse granularity (`vendor` + `hardware_model` +
+`precision` + `workload_class`, `deployment_config == {}` and `slo is
+None`) — the same granularity `unsupported_workload_classes` already
+operates at. `measured_pass`/`measured_fail` records (config-pinned,
+SLO-pinned) are stored and inspectable via `forgeway qualifications` but
+not yet consulted by the decision engine — see
+[`docs/qualification.md`](qualification.md#whats-deferred).
+
 ## Provenance convention
 
 Every evidence-bearing value in Forgeway — a `Metric`, a
@@ -193,3 +251,7 @@ one came from.
   there's no structured runtime/framework data to populate it with yet.
 - Split-placement decisions aren't representable in `PlacementDecision`
   v0.1 (see above).
+- `QualificationRecord`'s `measured_pass`/`measured_fail` states aren't yet
+  consulted by the decision engine (see above and
+  [`docs/qualification.md`](qualification.md#whats-deferred)); only one
+  runtime (`vllm`) has a real staged checker.

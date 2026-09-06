@@ -1,14 +1,18 @@
 """The `forgeway` CLI: `forgeway discover`, `forgeway bench`, `forgeway runs`,
-`forgeway analyze`.
+`forgeway bench-profile`, `forgeway compare-runs`, `forgeway qualify`,
+`forgeway qualify-import`, `forgeway qualifications`, `forgeway analyze`.
 
 Installed as a console script via api/pyproject.toml
 (`pip install -e api/`, or `python -m app.cli.main <command>` without
 installing). See docs/discovery.md, docs/benchmarking.md,
-docs/decision-engine.md, and README.md's end-to-end CLI flow section.
+docs/qualification.md, docs/decision-engine.md, and README.md's
+end-to-end CLI flow section.
 """
 from __future__ import annotations
 
 import argparse
+import importlib.metadata
+import platform
 import sys
 import uuid
 from pathlib import Path
@@ -21,6 +25,7 @@ from app.benchmark.evidence import build_performance_evidence
 from app.benchmark.cross_vendor import (
     CrossVendorEvidenceRecord,
     ProfileError,
+    backend_for_vendor,
     compare_evidence,
     display_status,
     load_benchmark_profile_yaml,
@@ -37,6 +42,7 @@ from app.benchmark.vllm_runner import (
 from app.cli.yaml_io import AnalyzeError, load_policy_yaml, load_workload_yaml
 from app.core.schemas import ComputeTarget, Workload
 from app.core.schemas.v0_1 import PerformanceEvidence, PlacementDecision
+from app.core.schemas.v0_1.qualification import QualificationRecord, QualificationSubject
 from app.data.loader import load_compute_targets
 from app.discovery.adapter import (
     DEFAULT_ADAPTER_TIMEOUT_S,
@@ -50,6 +56,8 @@ from app.discovery.nvidia import NvidiaDiscoveryAdapter
 from app.discovery.rocm import RocmDiscoveryAdapter
 from app.engine.decision import run_decision
 from app.models import Recommendation, ScenarioParams, ScenarioType
+from app.qualification.checker import VllmRuntimeChecker, run_qualification_pipeline
+from app.qualification.store import get_qualification, is_stale, list_qualifications, qualifications_dir, save_qualification
 
 #: Adapters to try, in order. Adding a vendor is adding one line here plus
 #: one new adapter class — see app/discovery/adapter.py.
@@ -486,6 +494,158 @@ def cmd_compare_runs(args: argparse.Namespace) -> int:
     return 0
 
 
+def _best_effort_vllm_version() -> Optional[str]:
+    try:
+        return importlib.metadata.version("vllm")
+    except importlib.metadata.PackageNotFoundError:
+        return None
+
+
+def _qualification_environment_summary(target: ComputeTarget) -> str:
+    return (
+        f"{platform.platform()}; target={target.model} ({target.vendor}); "
+        f"vllm={_best_effort_vllm_version() or 'not installed'}"
+    )
+
+
+def format_qualification_human(record: QualificationRecord, *, already_in_databank: bool) -> str:
+    subject = record.subject
+    lines = [
+        "Forgeway qualification" + (" (already in databank — nothing re-run)" if already_in_databank else ""),
+        "",
+        f"  Subject          {subject.vendor} {subject.hardware_model} — {subject.runtime}, "
+        f"{subject.model} ({subject.precision})",
+        f"  Workload class   {subject.workload_class}",
+        f"  State            {record.state}",
+    ]
+    for stage in record.stages:
+        lines.append(f"    [{'x' if stage.passed else ' '}] {stage.stage}: {stage.detail}")
+    lines += [
+        "",
+        f"  Source           {record.source}",
+        f"  Environment      {record.environment}",
+    ]
+    if record.evidence_reference:
+        lines.append(f"  Evidence         {record.evidence_reference}")
+    lines.append(f"  Timestamp        {record.timestamp.isoformat()}")
+    if record.review_date is not None:
+        stale_note = " (STALE — recommend revalidating)" if is_stale(record) else ""
+        lines.append(f"  Review by        {record.review_date.isoformat()}{stale_note}")
+    lines += [
+        "",
+        "Run `forgeway qualify ... --json` for the full QualificationRecord.",
+    ]
+    return "\n".join(lines)
+
+
+def cmd_qualify(args: argparse.Namespace) -> int:
+    try:
+        profile = load_benchmark_profile_yaml(Path(args.profile_path))
+    except ProfileError as e:
+        print(f"forgeway qualify: {e}", file=sys.stderr)
+        return 1
+
+    try:
+        target = resolve_bench_target(args.target_id)
+    except DiscoveryError as e:
+        print(f"forgeway qualify: {e}", file=sys.stderr)
+        return 1
+
+    slo = None
+    if args.slo_from:
+        try:
+            slo = load_workload_yaml(Path(args.slo_from)).slo
+        except AnalyzeError as e:
+            print(f"forgeway qualify: {e}", file=sys.stderr)
+            return 1
+
+    deployment_config: dict = {"tensor_parallel_degree": profile.tensor_parallel_degree}
+    if profile.quantization is not None:
+        deployment_config["quantization"] = profile.quantization
+    if profile.max_model_len is not None:
+        deployment_config["max_model_len"] = profile.max_model_len
+
+    subject = QualificationSubject(
+        vendor=target.vendor,
+        hardware_model=target.model,
+        architecture=target.architecture,
+        runtime=profile.runtime,
+        runtime_version=_best_effort_vllm_version(),
+        backend=backend_for_vendor(target.vendor),
+        model=profile.model,
+        precision=profile.precision,
+        deployment_config=deployment_config,
+        workload_class=args.workload_class,
+        slo=slo,
+    )
+
+    existing = None if args.force else get_qualification(subject)
+    if existing is not None:
+        if args.json:
+            print(existing.model_dump_json(indent=2))
+        else:
+            print(format_qualification_human(existing, already_in_databank=True))
+        return 0
+
+    record = run_qualification_pipeline(
+        VllmRuntimeChecker(),
+        subject,
+        target,
+        source=args.source
+        or f"forgeway qualify: staged check via profile {profile.profile_id} v{profile.profile_version}",
+        environment=_qualification_environment_summary(target),
+    )
+    save_qualification(record)
+
+    if args.json:
+        print(record.model_dump_json(indent=2))
+    else:
+        print(format_qualification_human(record, already_in_databank=False))
+    return 0
+
+
+def cmd_qualify_import(args: argparse.Namespace) -> int:
+    path = Path(args.record_path)
+    if not path.exists():
+        print(f"forgeway qualify-import: file not found: {path}", file=sys.stderr)
+        return 1
+    try:
+        record = QualificationRecord.model_validate_json(path.read_text())
+    except ValueError as e:
+        print(f"forgeway qualify-import: {path} is not a valid QualificationRecord: {e}", file=sys.stderr)
+        return 1
+
+    save_qualification(record)
+    if args.json:
+        print(record.model_dump_json(indent=2))
+    else:
+        print(format_qualification_human(record, already_in_databank=False))
+        print(f"\nSaved to the local qualification databank ({qualifications_dir()}).")
+    return 0
+
+
+def format_qualifications_table(records: list[QualificationRecord]) -> str:
+    header = f"{'ID':<28} {'SUBJECT':<46} {'WORKLOAD CLASS':<20} {'STATE':<14} {'STALE':<5}"
+    lines = [header, "-" * len(header)]
+    for record in sorted(records, key=lambda r: r.timestamp):
+        subject = record.subject
+        label = f"{subject.vendor}/{subject.hardware_model} — {subject.runtime}/{subject.model}"
+        lines.append(
+            f"{record.id:<28} {label:<46} {subject.workload_class:<20} {record.state:<14} "
+            f"{'yes' if is_stale(record) else 'no':<5}"
+        )
+    return "\n".join(lines)
+
+
+def cmd_qualifications(args: argparse.Namespace) -> int:
+    records = list_qualifications()
+    if not records:
+        print(f"No qualification records found (checked the bundled fixture and {qualifications_dir()}).")
+        return 0
+    print(format_qualifications_table(records))
+    return 0
+
+
 def _confidence_label(confidence: Optional[float]) -> str:
     """A simple, fixed-threshold convention for human-readable output —
     not a statistically derived bucketing. NONE when no recommendation
@@ -795,6 +955,69 @@ def build_parser() -> argparse.ArgumentParser:
     compare_runs_parser.add_argument("evidence_a", help="Path to the first CrossVendorEvidenceRecord JSON file.")
     compare_runs_parser.add_argument("evidence_b", help="Path to the second CrossVendorEvidenceRecord JSON file.")
     compare_runs_parser.set_defaults(func=cmd_compare_runs)
+
+    qualify_parser = subparsers.add_parser(
+        "qualify",
+        help="Check (or look up) whether a BenchmarkProfile's combination is qualified on local hardware.",
+    )
+    qualify_parser.add_argument(
+        "profile_path",
+        help="Path to a BenchmarkProfile YAML file describing the runtime/model/precision/deployment "
+        "config to qualify (see benchmarks/profiles/llama-8b-cross-vendor-v0.1.yaml).",
+    )
+    qualify_parser.add_argument(
+        "--workload-class",
+        required=True,
+        choices=["realtime-inference", "batch-inference", "training"],
+        help="Which workload class this qualification is about.",
+    )
+    qualify_parser.add_argument(
+        "--slo-from",
+        default=None,
+        help="Path to an AIWorkload YAML file whose SLO this qualification should actually evaluate "
+        "(see examples/workload.yaml) — produces a measured_pass/measured_fail record instead of "
+        "smoke_tested. Omit to only check that the combination runs at all.",
+    )
+    qualify_parser.add_argument(
+        "--target-id",
+        default=None,
+        help="Qualify against this specific discovered target's id (see `forgeway discover --all`) "
+        "instead of whichever target plain `forgeway discover` would have picked.",
+    )
+    qualify_parser.add_argument(
+        "--source",
+        default=None,
+        help="Override the record's source text (default: a plain statement of the staged check that "
+        "actually ran, naming the profile).",
+    )
+    qualify_parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Re-run the staged checks even if a record for this exact subject is already in the "
+        "databank (default: report the existing record and stop — see docs/qualification.md).",
+    )
+    qualify_parser.add_argument(
+        "--json", action="store_true", help="Emit the full QualificationRecord JSON instead of text."
+    )
+    qualify_parser.set_defaults(func=cmd_qualify)
+
+    qualify_import_parser = subparsers.add_parser(
+        "qualify-import",
+        help="Save a hand-authored QualificationRecord JSON file into the local databank.",
+    )
+    qualify_import_parser.add_argument(
+        "record_path", help="Path to a QualificationRecord JSON file (e.g. for a runtime with no staged "
+        "checker yet — see docs/qualification.md)."
+    )
+    qualify_import_parser.add_argument(
+        "--json", action="store_true", help="Emit the saved QualificationRecord JSON instead of text."
+    )
+    qualify_import_parser.set_defaults(func=cmd_qualify_import)
+
+    qualifications_parser = subparsers.add_parser(
+        "qualifications", help="List every qualification record in the databank (fixture + local)."
+    )
+    qualifications_parser.set_defaults(func=cmd_qualifications)
 
     analyze_parser = subparsers.add_parser(
         "analyze", help="Run the placement decision engine against a YAML-defined workload."

@@ -168,6 +168,44 @@ def test_bench_profile_happy_path_saves_evidence_and_record(monkeypatch, tmp_pat
     assert "nvidia" in captured.out
 
 
+def test_bench_profile_target_id_selects_a_specific_discovered_target(monkeypatch, tmp_path, capsys):
+    monkeypatch.setenv("FORGEWAY_BENCH_DIR", str(tmp_path))
+    profile_path = tmp_path / "profile.yaml"
+    profile_path.write_text(_PROFILE_YAML)
+
+    wanted = _fake_target("nvidia").model_copy(update={"id": "local-nvidia-wanted"})
+    other = _fake_target("nvidia").model_copy(update={"id": "local-nvidia-other"})
+
+    class _FakeAdapter:
+        def __init__(self, name, target):
+            self.name = name
+            self._target = target
+
+        def is_available(self):
+            return True
+
+        def discover(self):
+            return self._target
+
+    monkeypatch.setattr(
+        "app.cli.main.ADAPTERS",
+        [_FakeAdapter("A", other), _FakeAdapter("B", wanted)],
+    )
+    record = _fake_record(vendor="nvidia", run_id="bench-profile-abc123")
+    seen_target_ids = []
+
+    def _runner_for_target(target):
+        seen_target_ids.append(target.id)
+        return _FakeRunner(record)
+
+    monkeypatch.setattr("app.cli.main.runner_for_target", _runner_for_target)
+
+    exit_code = main(["bench-profile", str(profile_path), "--target-id", "local-nvidia-wanted"])
+
+    assert exit_code == 0
+    assert seen_target_ids == ["local-nvidia-wanted"]
+
+
 def test_bench_profile_json_flag_emits_full_record(monkeypatch, tmp_path, capsys):
     monkeypatch.setenv("FORGEWAY_BENCH_DIR", str(tmp_path))
     profile_path = tmp_path / "profile.yaml"

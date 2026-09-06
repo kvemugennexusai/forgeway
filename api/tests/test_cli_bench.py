@@ -46,6 +46,53 @@ def test_bench_reports_no_accelerator_cleanly(monkeypatch, capsys):
     assert "Traceback" not in captured.err
 
 
+def test_bench_target_id_selects_a_specific_discovered_target(monkeypatch, capsys, tmp_path):
+    """WP2: --target-id picks a specific target out of every adapter's
+    discovered results (app.discovery.adapter.discover_all()), rather than
+    always taking whichever one run_discovery() would return."""
+    monkeypatch.setenv("FORGEWAY_BENCH_DIR", str(tmp_path))
+    other_target = _fake_target()
+    wanted_target = _fake_target()
+    wanted_target = wanted_target.model_copy(update={"id": "local-nvidia-wanted", "model": "Wanted GPU"})
+    other_target = other_target.model_copy(update={"id": "local-nvidia-other", "model": "Other GPU"})
+
+    class _FakeAdapter:
+        name = "Fake"
+
+        def __init__(self, target):
+            self._target = target
+
+        def is_available(self):
+            return True
+
+        def discover(self):
+            return self._target
+
+    monkeypatch.setattr("app.cli.main.ADAPTERS", [_FakeAdapter(other_target), _FakeAdapter(wanted_target)])
+    monkeypatch.setattr(
+        "app.cli.main.run_vllm_bench_latency",
+        lambda **kwargs: RawBenchmarkResult(raw_json={"avg_latency": 0.5}, gpu_samples=[]),
+    )
+
+    exit_code = main(["bench", "--model", "m", "--target-id", "local-nvidia-wanted"])
+
+    assert exit_code == 0
+    captured = capsys.readouterr()
+    assert "local-nvidia-wanted" in captured.out
+    assert "local-nvidia-other" not in captured.out
+
+
+def test_bench_target_id_reports_a_clean_error_when_not_found(monkeypatch, capsys):
+    monkeypatch.setattr("app.cli.main.ADAPTERS", [])
+
+    exit_code = main(["bench", "--model", "m", "--target-id", "does-not-exist"])
+
+    assert exit_code == 1
+    captured = capsys.readouterr()
+    assert "no discovered target with id 'does-not-exist'" in captured.err
+    assert "Traceback" not in captured.err
+
+
 def test_bench_reports_benchmark_error_cleanly(monkeypatch, capsys):
     monkeypatch.setattr("app.cli.main.run_discovery", lambda: _fake_target())
 

@@ -12,7 +12,9 @@ import argparse
 import sys
 import uuid
 from pathlib import Path
-from typing import Optional
+from typing import Literal, Optional
+
+from pydantic import BaseModel
 
 from app.benchmark.errors import BenchmarkError
 from app.benchmark.evidence import build_performance_evidence
@@ -36,7 +38,14 @@ from app.cli.yaml_io import AnalyzeError, load_policy_yaml, load_workload_yaml
 from app.core.schemas import ComputeTarget, Workload
 from app.core.schemas.v0_1 import PerformanceEvidence, PlacementDecision
 from app.data.loader import load_compute_targets
-from app.discovery.adapter import DEFAULT_ADAPTER_TIMEOUT_S, DiscoveryAdapter, DiscoveryError, discover_all
+from app.discovery.adapter import (
+    DEFAULT_ADAPTER_TIMEOUT_S,
+    AdapterError,
+    DiscoveryAdapter,
+    DiscoveryError,
+    DiscoveryResult,
+    discover_all,
+)
 from app.discovery.nvidia import NvidiaDiscoveryAdapter
 from app.discovery.rocm import RocmDiscoveryAdapter
 from app.engine.decision import run_decision
@@ -75,6 +84,81 @@ def run_discovery(
     )
 
 
+def resolve_bench_target(target_id: Optional[str]) -> ComputeTarget:
+    """What every benchmark command (`bench`, `bench-profile`) uses to pick
+    the ComputeTarget it runs against. With no target_id, this is exactly
+    run_discovery()'s existing single-target behavior, unchanged — the
+    common case, and the only case before WP2. With a target_id (from
+    `--target-id`, populated by `forgeway discover --all`), it looks that
+    id up across every registered adapter's results instead of settling
+    for whichever one run_discovery() would have picked.
+
+    Raises DiscoveryError either way — the same exception both callers
+    already catch and print as a clean one-line message."""
+    if target_id is None:
+        return run_discovery()
+
+    result = discover_all(ADAPTERS)
+    for target in result.targets:
+        if target.id == target_id:
+            return target
+
+    discovered = ", ".join(t.id for t in result.targets) or "(none)"
+    raise DiscoveryError(
+        f"no discovered target with id '{target_id}'. Discovered: {discovered}. "
+        "Run `forgeway discover --all` to see what's available."
+    )
+
+
+DISCOVER_ALL_SCHEMA_VERSION = "forgeway-discover-all/v0.1"
+
+
+class DiscoverAllOutput(BaseModel):
+    """The `forgeway discover --all --json` output shape — versioned
+    separately from a single ComputeTarget (`forgeway discover --json`,
+    schema_version "forgeway/v0.1") precisely so that record can keep its
+    existing shape frozen while this one is free to evolve. Wraps
+    app.discovery.adapter.DiscoveryResult, which has no schema_version of
+    its own since it's an internal type, not a CLI output contract."""
+
+    schema_version: Literal["forgeway-discover-all/v0.1"] = DISCOVER_ALL_SCHEMA_VERSION
+    targets: list[ComputeTarget]
+    errors: list[AdapterError]
+
+
+def format_discover_all_human(result: DiscoveryResult) -> str:
+    lines = ["Forgeway discovery: all targets", ""]
+    if not result.targets:
+        lines.append("  No accelerators discovered.")
+    for i, target in enumerate(result.targets):
+        lines.append(f"  [{i}] {target.id}")
+        lines.append(f"      Vendor / model   {target.vendor} — {target.model}")
+        lines.append(f"      Devices          {target.accelerator_count}")
+        lines.append(f"      Memory / device  {target.memory_gb_per_device:.1f} GB")
+    lines.append("")
+    if result.errors:
+        lines.append("Errors:")
+        for e in result.errors:
+            lines.append(f"  {e.adapter} ({e.stage}): {e.error_type}: {e.message}")
+        lines.append("")
+    lines.append(
+        "Run `forgeway discover --all --json` for the full record, or "
+        "`forgeway bench --target-id <id>` / `forgeway bench-profile ... --target-id <id>` "
+        "to benchmark a specific discovered target."
+    )
+    return "\n".join(lines)
+
+
+def cmd_discover_all(args: argparse.Namespace) -> int:
+    result = discover_all(ADAPTERS)
+    if args.json:
+        output = DiscoverAllOutput(targets=result.targets, errors=result.errors)
+        print(output.model_dump_json(indent=2))
+    else:
+        print(format_discover_all_human(result))
+    return 0 if result.targets else 1
+
+
 def format_human(target: ComputeTarget) -> str:
     lines = [
         "Forgeway discovery: local compute target",
@@ -101,6 +185,9 @@ def format_human(target: ComputeTarget) -> str:
 
 
 def cmd_discover(args: argparse.Namespace) -> int:
+    if args.all:
+        return cmd_discover_all(args)
+
     try:
         target = run_discovery()
     except DiscoveryError as e:
@@ -168,7 +255,7 @@ def format_runs_table(runs: list[PerformanceEvidence]) -> str:
 
 def cmd_bench(args: argparse.Namespace) -> int:
     try:
-        target = run_discovery()
+        target = resolve_bench_target(args.target_id)
     except DiscoveryError as e:
         print(f"forgeway bench: {e}", file=sys.stderr)
         return 1
@@ -263,7 +350,7 @@ def cmd_bench_profile(args: argparse.Namespace) -> int:
         return 1
 
     try:
-        target = run_discovery()
+        target = resolve_bench_target(args.target_id)
     except DiscoveryError as e:
         print(f"forgeway bench-profile: {e}", file=sys.stderr)
         return 1
@@ -569,6 +656,15 @@ def build_parser() -> argparse.ArgumentParser:
     discover_parser.add_argument(
         "--json", action="store_true", help="Emit a Forgeway ComputeTarget JSON object instead of text."
     )
+    discover_parser.add_argument(
+        "--all",
+        action="store_true",
+        help="Discover across every registered adapter and report every target found, plus any adapter "
+        "errors, instead of just the first one. A separate, additively-versioned output "
+        "(schema_version 'forgeway-discover-all/v0.1' with --json) — plain `forgeway discover` is "
+        "unchanged. Pair with `--target-id` on `forgeway bench`/`bench-profile` to benchmark a specific "
+        "discovered target.",
+    )
     discover_parser.set_defaults(func=cmd_discover)
 
     bench_parser = subparsers.add_parser(
@@ -620,6 +716,13 @@ def build_parser() -> argparse.ArgumentParser:
         "--device-index", type=int, default=0, help="GPU index to target and sample telemetry from (default: %(default)s)."
     )
     bench_parser.add_argument(
+        "--target-id",
+        default=None,
+        help="Benchmark this specific discovered target's id (see `forgeway discover --all`) instead of "
+        "whichever target plain `forgeway discover` would have picked. Omit to keep today's default "
+        "behavior.",
+    )
+    bench_parser.add_argument(
         "--json", action="store_true", help="Emit the full PerformanceEvidence JSON record instead of text."
     )
     bench_parser.set_defaults(func=cmd_bench)
@@ -643,6 +746,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
     bench_profile_parser.add_argument(
         "--device-index", type=int, default=0, help="GPU index to target and sample telemetry from (default: %(default)s)."
+    )
+    bench_profile_parser.add_argument(
+        "--target-id",
+        default=None,
+        help="Benchmark this specific discovered target's id (see `forgeway discover --all`) instead of "
+        "whichever target plain `forgeway discover` would have picked. Omit to keep today's default "
+        "behavior.",
     )
     bench_profile_parser.add_argument(
         "--timeout-s",

@@ -96,6 +96,53 @@ def test_discover_json_emits_a_valid_compute_target(monkeypatch, capsys):
     assert parsed == target
 
 
+#: The exact top-level key set `forgeway discover --json` has always
+#: emitted (one ComputeTarget's own fields, schema + computed). Pinned here
+#: as its own regression test (WP2) so a future change to this shape — e.g.
+#: accidentally returning a list, or adding a field meant for the new
+#: `--all` mode — fails loudly instead of silently breaking the web app's
+#: /import flow (web/components/import/import-panel.tsx), which parses
+#: this as one object pasted in by hand.
+_DISCOVER_JSON_SHAPE_KEYS = {
+    "schema_version",
+    "id",
+    "vendor",
+    "model",
+    "tier",
+    "location",
+    "architecture",
+    "memory_gb_per_device",
+    "interconnect",
+    "supported_precisions",
+    "capacity_units_total",
+    "capacity_units_allocated",
+    "runtime_support",
+    "price_per_hr_per_unit",
+    "status",
+    "unsupported_workload_classes",
+    "notes",
+    "observed_gpu_utilization_pct",
+    "observed_memory_utilization_pct",
+    "discovered_at",
+    "free_capacity_units",
+    "utilization_pct",
+    "accelerator_count",
+}
+
+
+def test_discover_json_output_shape_is_pinned(monkeypatch, capsys):
+    target = _fake_target()
+    monkeypatch.setattr("app.cli.main.ADAPTERS", [_WorkingAdapter(target)])
+
+    exit_code = main(["discover", "--json"])
+
+    assert exit_code == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert isinstance(payload, dict)
+    assert set(payload.keys()) == _DISCOVER_JSON_SHAPE_KEYS
+    assert payload["schema_version"] == "forgeway/v0.1"
+
+
 def test_discover_human_output_contains_key_fields(monkeypatch, capsys):
     target = _fake_target()
     monkeypatch.setattr("app.cli.main.ADAPTERS", [_WorkingAdapter(target)])
@@ -130,6 +177,72 @@ def test_unexpected_adapter_exception_never_surfaces_as_a_raw_traceback(monkeypa
     assert "No supported accelerator was detected" in captured.err
     assert "unexpected bug, not a DiscoveryError" in captured.err
     assert "Traceback" not in captured.err
+
+
+# --------------------------------------------------------------------------
+# `forgeway discover --all` (WP2) — additive, does not touch plain
+# `forgeway discover`'s output shape (see the pinning test above).
+# --------------------------------------------------------------------------
+
+
+def test_discover_all_json_reports_every_target_and_every_error(monkeypatch, capsys):
+    target_a = _fake_target(id="local-nvidia-a", model="GPU A")
+    target_b = _fake_target(id="local-nvidia-b", model="GPU B")
+    monkeypatch.setattr(
+        "app.cli.main.ADAPTERS",
+        [_WorkingAdapter(target_a), _BrokenAdapter(), _WorkingAdapter(target_b)],
+    )
+
+    exit_code = main(["discover", "--all", "--json"])
+
+    assert exit_code == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["schema_version"] == "forgeway-discover-all/v0.1"
+    assert [t["id"] for t in payload["targets"]] == ["local-nvidia-a", "local-nvidia-b"]
+    assert len(payload["errors"]) == 1
+    assert payload["errors"][0]["adapter"] == "Fake-Broken"
+    assert payload["errors"][0]["stage"] == "discover"
+
+
+def test_discover_all_human_output_lists_targets_and_errors(monkeypatch, capsys):
+    target = _fake_target()
+    monkeypatch.setattr("app.cli.main.ADAPTERS", [_WorkingAdapter(target), _BrokenAdapter()])
+
+    exit_code = main(["discover", "--all"])
+
+    assert exit_code == 0
+    captured = capsys.readouterr()
+    assert "Test GPU" in captured.out
+    assert "Fake-Broken" in captured.out
+    assert "--target-id" in captured.out
+
+
+def test_discover_all_reports_failure_when_nothing_found(monkeypatch, capsys):
+    monkeypatch.setattr("app.cli.main.ADAPTERS", [_UnavailableAdapter()])
+
+    exit_code = main(["discover", "--all"])
+
+    assert exit_code == 1
+    captured = capsys.readouterr()
+    assert "No accelerators discovered" in captured.out
+
+
+def test_discover_all_does_not_change_plain_discover_output(monkeypatch, capsys):
+    """Same adapter list, both commands — confirms --all is a genuinely
+    separate mode rather than a variant that leaks into plain discover."""
+    target = _fake_target()
+    monkeypatch.setattr("app.cli.main.ADAPTERS", [_WorkingAdapter(target)])
+
+    main(["discover", "--json"])
+    plain_payload = json.loads(capsys.readouterr().out)
+
+    main(["discover", "--all", "--json"])
+    all_payload = json.loads(capsys.readouterr().out)
+
+    assert plain_payload == json.loads(target.model_dump_json())
+    assert all_payload["schema_version"] == "forgeway-discover-all/v0.1"
+    assert "targets" in all_payload and "schema_version" in plain_payload
+    assert set(plain_payload.keys()) == _DISCOVER_JSON_SHAPE_KEYS  # unchanged single-object shape
 
 
 def test_run_discovery_raises_discovery_error_directly_when_nothing_available():

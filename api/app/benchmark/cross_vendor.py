@@ -80,6 +80,14 @@ _VLLM_DTYPE_BY_PRECISION: dict[str, str] = {
     "float32": "float32",
 }
 
+
+def dtype_for_precision(precision: str) -> Optional[str]:
+    """Public accessor for _VLLM_DTYPE_BY_PRECISION — used here and by
+    app.qualification.checker's structural config_supported() check, so
+    both places agree on exactly one mapping rather than each keeping
+    their own copy."""
+    return _VLLM_DTYPE_BY_PRECISION.get(precision.lower())
+
 #: Forgeway's own vendor-neutral execution-backend label (WP3 of the
 #: discovery/adapter cleanup) for a ComputeTarget/BenchmarkRunner vendor —
 #: distinct from `vendor` itself (a hardware/product fact, e.g. "nvidia")
@@ -549,7 +557,7 @@ def _run_profile(
         device_index=device_index,
         gpu_vendor=runner.vendor,
         env=profile.env_vars or None,
-        dtype=_VLLM_DTYPE_BY_PRECISION.get(profile.precision.lower()),
+        dtype=dtype_for_precision(profile.precision),
         tensor_parallel_size=profile.tensor_parallel_degree,
         quantization=profile.quantization,
         max_model_len=profile.max_model_len,

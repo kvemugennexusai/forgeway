@@ -214,12 +214,50 @@ def test_driver_version_mismatch_alone_is_partially_comparable():
     assert any("driver version differs" in r for r in verdict.reasons)
 
 
+def test_backend_mismatch_alone_is_partially_comparable_not_a_hard_block():
+    """WP3: an execution-backend difference (e.g. cuda vs rocm) is a soft
+    dimension — comparable with caveats, never an automatic NOT_COMPARABLE
+    the way a critical profile mismatch is."""
+    a = _record(vendor="nvidia", environment=_environment(backend="cuda"))
+    b = _record(vendor="amd", environment=_environment(backend="rocm"))
+    verdict = compare_evidence(a, b)
+    assert verdict.status == "PARTIALLY_COMPARABLE"
+    assert any("execution backend differs" in r and "comparable with caveats" in r for r in verdict.reasons)
+
+
+def test_same_backend_comparison_behavior_is_unchanged():
+    """Existing comparison behavior for same-backend results must be
+    unaffected by WP3 — identical backend, identical everything else,
+    stays fully COMPARABLE with no caveat."""
+    a = _record(vendor="nvidia", environment=_environment(backend="cuda"))
+    b = _record(vendor="nvidia", environment=_environment(backend="cuda"))
+    verdict = compare_evidence(a, b)
+    assert verdict.status == "COMPARABLE"
+    assert verdict.reasons == []
+
+
 def test_accelerator_count_mismatch_alone_is_partially_comparable():
     a = _record(vendor="nvidia", target=_target(vendor="nvidia", accelerator_count=1))
     b = _record(vendor="amd", target=_target(vendor="amd", accelerator_count=2))
     verdict = compare_evidence(a, b)
     assert verdict.status == "PARTIALLY_COMPARABLE"
     assert any("accelerator count differs" in r for r in verdict.reasons)
+
+
+def test_critical_mismatch_takes_precedence_over_backend_mismatch():
+    a = _record(
+        vendor="nvidia",
+        profile=_profile(precision="bf16"),
+        environment=_environment(backend="cuda"),
+    )
+    b = _record(
+        vendor="amd",
+        profile=_profile(precision="fp16"),
+        environment=_environment(backend="rocm"),
+    )
+    verdict = compare_evidence(a, b)
+    assert verdict.status == "NOT_COMPARABLE"
+    assert not any("execution backend" in r for r in verdict.reasons)
 
 
 def test_critical_mismatch_takes_precedence_over_soft_mismatch():

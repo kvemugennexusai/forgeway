@@ -80,6 +80,20 @@ _VLLM_DTYPE_BY_PRECISION: dict[str, str] = {
     "float32": "float32",
 }
 
+#: Forgeway's own vendor-neutral execution-backend label (WP3 of the
+#: discovery/adapter cleanup) for a ComputeTarget/BenchmarkRunner vendor —
+#: distinct from `vendor` itself (a hardware/product fact, e.g. "nvidia")
+#: and from `runtime`/`runtime_family` (the framework, e.g. "vllm"): this
+#: is which low-level accelerator API that framework actually executed
+#: through on this run. An unrecognized vendor falls back to the vendor
+#: string itself rather than raising or guessing, mirroring
+#: _VLLM_DTYPE_BY_PRECISION's "no entry -> pass through" convention.
+_BACKEND_BY_VENDOR: dict[str, str] = {"nvidia": "cuda", "amd": "rocm"}
+
+
+def backend_for_vendor(vendor: str) -> str:
+    return _BACKEND_BY_VENDOR.get(vendor, vendor)
+
 
 class ProfileError(Exception):
     """The one expected failure mode for a malformed/missing benchmark
@@ -224,7 +238,22 @@ class EnvironmentInfo(BaseModel):
     Every field is Optional and best-effort by design (section 6 of the
     cross-vendor spec: "do not require every field to exist; capture what
     is reliably discoverable") — a missing field here is preserved as
-    missing, never guessed or defaulted to something plausible-looking."""
+    missing, never guessed or defaulted to something plausible-looking.
+
+    `backend`, `effective_gpu_memory_utilization`, and
+    `effective_enforce_eager` are this run's *effective* runtime
+    configuration — what actually executed — as opposed to
+    BenchmarkProfile's *requested* configuration (the vendor-neutral spec
+    two runs must agree on to be comparable). `backend` legitimately
+    varies with whichever hardware happened to run the benchmark (WP3 of
+    the discovery/adapter cleanup — see backend_for_vendor()), the same
+    way runtime_version/driver_version above do, so it's compared as
+    another soft dimension in compare_evidence(), not a critical one. The
+    other two have no BenchmarkProfile counterpart to compare against at
+    all: they're per-machine resource accommodations
+    (run_vllm_bench_latency's docstring explains why), recorded here so a
+    caller can see one was applied rather than have it silently vanish
+    into an otherwise-identical-looking comparison."""
 
     runtime: str = "vllm"
     runtime_version: Optional[str] = None
@@ -233,9 +262,19 @@ class EnvironmentInfo(BaseModel):
     kernel: Optional[str] = None
     cpu_model: Optional[str] = None
     driver_version: Optional[str] = None
+    backend: Optional[str] = None
+    effective_gpu_memory_utilization: Optional[float] = None
+    effective_enforce_eager: bool = False
 
     @classmethod
-    def capture(cls, target: ComputeTarget) -> "EnvironmentInfo":
+    def capture(
+        cls,
+        target: ComputeTarget,
+        *,
+        backend: Optional[str] = None,
+        gpu_memory_utilization: Optional[float] = None,
+        enforce_eager: bool = False,
+    ) -> "EnvironmentInfo":
         return cls(
             runtime_version=_best_effort_package_version("vllm"),
             torch_version=_best_effort_package_version("torch"),
@@ -243,6 +282,9 @@ class EnvironmentInfo(BaseModel):
             kernel=platform.release(),
             cpu_model=_best_effort_cpu_model(),
             driver_version=_best_effort_driver_version(target),
+            backend=backend,
+            effective_gpu_memory_utilization=gpu_memory_utilization,
+            effective_enforce_eager=enforce_eager,
         )
 
 
@@ -343,9 +385,15 @@ def compare_evidence(a: "CrossVendorEvidenceRecord", b: "CrossVendorEvidenceReco
        is a real gap in traceability, not something to wave through as
        "probably fine."
     2. Otherwise, a mismatch on a soft dimension (runtime version, driver
-       version, or total accelerator count on the target) -> a real result,
-       but PARTIALLY_COMPARABLE — per-replica metrics remain meaningful,
-       the reason is still surfaced, not hidden.
+       version, execution backend, or total accelerator count on the
+       target) -> a real result, but PARTIALLY_COMPARABLE — per-replica
+       metrics remain meaningful, the reason is still surfaced, not
+       hidden. A differing execution backend (e.g. cuda vs rocm) is
+       deliberately a soft dimension, not critical: it never blocks a
+       comparison outright the way a critical mismatch does — it's
+       comparable with caveats, and the caveat is always named explicitly
+       rather than silently averaged away (WP3 of the discovery/adapter
+       cleanup).
     3. Otherwise -> COMPARABLE.
 
     Never returns anything other than one of the three ComparabilityStatus
@@ -370,6 +418,12 @@ def compare_evidence(a: "CrossVendorEvidenceRecord", b: "CrossVendorEvidenceReco
     if a.environment.driver_version != b.environment.driver_version:
         soft_reasons.append(
             f"driver version differs: {a.environment.driver_version!r} vs {b.environment.driver_version!r}"
+        )
+    if a.environment.backend != b.environment.backend:
+        soft_reasons.append(
+            f"execution backend differs: {a.environment.backend!r} vs {b.environment.backend!r} "
+            "(comparable with caveats, not directly comparable — different execution backends can have "
+            "materially different performance characteristics even for an identical profile)"
         )
     if a.target.accelerator_count != b.target.accelerator_count:
         soft_reasons.append(
@@ -520,7 +574,12 @@ def _run_profile(
         profile_id=profile.profile_id,
         profile_version=profile.profile_version,
         target=target,
-        environment=EnvironmentInfo.capture(target),
+        environment=EnvironmentInfo.capture(
+            target,
+            backend=backend_for_vendor(runner.vendor),
+            gpu_memory_utilization=gpu_memory_utilization,
+            enforce_eager=enforce_eager,
+        ),
         performance_evidence=evidence,
         comparability_key=ComparabilityKey.from_profile(profile),
         raw_command=raw.cmd,

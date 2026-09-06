@@ -174,6 +174,47 @@ def test_environment_capture_handles_missing_driver_version_gracefully():
     assert record.environment.driver_version is None
 
 
+def test_cuda_runner_records_effective_backend():
+    with patch("app.benchmark.cross_vendor.run_vllm_bench_latency", return_value=_FAKE_RAW):
+        record = CudaVllmBenchmarkRunner().run(_profile(), _target("nvidia"), run_id="run-backend-cuda")
+    assert record.environment.backend == "cuda"
+
+
+def test_rocm_runner_records_effective_backend():
+    with patch("app.benchmark.cross_vendor.run_vllm_bench_latency", return_value=_FAKE_RAW):
+        record = RocmVllmBenchmarkRunner().run(_profile(), _target("amd"), run_id="run-backend-rocm")
+    assert record.environment.backend == "rocm"
+
+
+def test_effective_runtime_overrides_are_recorded_separately_from_the_requested_profile():
+    """gpu_memory_utilization/enforce_eager are per-machine overrides with
+    no BenchmarkProfile field of their own (WP3) — passing them through
+    the runner must not touch the profile-derived comparability_key, only
+    the effective-configuration fields on environment."""
+    profile = _profile()
+    with patch("app.benchmark.cross_vendor.run_vllm_bench_latency", return_value=_FAKE_RAW):
+        record = CudaVllmBenchmarkRunner().run(
+            profile,
+            _target("nvidia"),
+            run_id="run-effective-config",
+            gpu_memory_utilization=0.7,
+            enforce_eager=True,
+        )
+    assert record.environment.effective_gpu_memory_utilization == 0.7
+    assert record.environment.effective_enforce_eager is True
+    # Neither override has a "requested" counterpart on the profile/key —
+    # confirms these are new facts, not a duplicate of something existing.
+    assert not hasattr(record.comparability_key, "gpu_memory_utilization")
+    assert not hasattr(record.comparability_key, "enforce_eager")
+
+
+def test_effective_overrides_default_to_unset_when_not_given():
+    with patch("app.benchmark.cross_vendor.run_vllm_bench_latency", return_value=_FAKE_RAW):
+        record = CudaVllmBenchmarkRunner().run(_profile(), _target("nvidia"), run_id="run-no-overrides")
+    assert record.environment.effective_gpu_memory_utilization is None
+    assert record.environment.effective_enforce_eager is False
+
+
 def test_comparability_key_matches_profile_fields():
     profile = _profile(precision="bf16", concurrency=4, tensor_parallel_degree=2)
     with patch("app.benchmark.cross_vendor.run_vllm_bench_latency", return_value=_FAKE_RAW):

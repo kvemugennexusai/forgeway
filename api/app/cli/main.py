@@ -36,7 +36,7 @@ from app.cli.yaml_io import AnalyzeError, load_policy_yaml, load_workload_yaml
 from app.core.schemas import ComputeTarget, Workload
 from app.core.schemas.v0_1 import PerformanceEvidence, PlacementDecision
 from app.data.loader import load_compute_targets
-from app.discovery.adapter import DiscoveryAdapter, DiscoveryError
+from app.discovery.adapter import DEFAULT_ADAPTER_TIMEOUT_S, DiscoveryAdapter, DiscoveryError, discover_all
 from app.discovery.nvidia import NvidiaDiscoveryAdapter
 from app.discovery.rocm import RocmDiscoveryAdapter
 from app.engine.decision import run_decision
@@ -47,22 +47,31 @@ from app.models import Recommendation, ScenarioParams, ScenarioType
 ADAPTERS: list[DiscoveryAdapter] = [NvidiaDiscoveryAdapter(), RocmDiscoveryAdapter()]
 
 
-def run_discovery(adapters: Optional[list[DiscoveryAdapter]] = None) -> ComputeTarget:
-    """Tries each adapter's is_available() in order and returns the first
-    one's discover() result. Raises DiscoveryError, with a message safe to
-    print directly to a user, if none of this machine's tooling is
-    supported yet. Defaults to the module-level ADAPTERS list, resolved at
-    call time (not at import time) so tests can reassign
-    app.cli.main.ADAPTERS and have this function pick up the change."""
+def run_discovery(
+    adapters: Optional[list[DiscoveryAdapter]] = None, *, timeout_s: float = DEFAULT_ADAPTER_TIMEOUT_S
+) -> ComputeTarget:
+    """Returns the first target any registered adapter finds, in list
+    order. Built on app.discovery.adapter.discover_all(), so one adapter
+    raising, hanging, or returning something malformed never stops the
+    others from being tried — it's just one more reason folded into the
+    DiscoveryError message below if nothing usable came back at all.
+    Raises DiscoveryError, with a message safe to print directly to a
+    user, if no adapter produced a target. Defaults to the module-level
+    ADAPTERS list, resolved at call time (not at import time) so tests can
+    reassign app.cli.main.ADAPTERS and have this function pick up the
+    change."""
     if adapters is None:
         adapters = ADAPTERS
-    for adapter in adapters:
-        if adapter.is_available():
-            return adapter.discover()
+    result = discover_all(adapters, timeout_s=timeout_s)
+    if result.targets:
+        return result.targets[0]
+
     names = ", ".join(a.name for a in adapters) or "(none configured)"
+    detail = "; ".join(f"{e.adapter}: {e.message}" for e in result.errors)
+    detail_suffix = f" Errors: {detail}." if detail else ""
     raise DiscoveryError(
         "No supported accelerator was detected on this machine. "
-        f"Checked: {names}. See docs/discovery.md for what's supported."
+        f"Checked: {names}. See docs/discovery.md for what's supported.{detail_suffix}"
     )
 
 

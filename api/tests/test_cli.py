@@ -113,13 +113,22 @@ def test_discover_human_output_contains_key_fields(monkeypatch, capsys):
 
 
 def test_unexpected_adapter_exception_never_surfaces_as_a_raw_traceback(monkeypatch, capsys):
+    """Before WP1 (adapter failure isolation), an adapter's discover()
+    raising anything other than DiscoveryError propagated all the way to
+    main()'s last-resort catch-all, printing "unexpected error". Now
+    run_discovery() catches it as an AdapterError via discover_all() and
+    reports a clean "no accelerator detected" message with the underlying
+    failure folded in — still never a raw traceback, but no longer
+    routed through the last-resort handler for a failure mode discovery
+    itself is now expected to handle."""
     monkeypatch.setattr("app.cli.main.ADAPTERS", [_BrokenAdapter()])
 
     exit_code = main(["discover"])
 
     assert exit_code == 1
     captured = capsys.readouterr()
-    assert "unexpected error" in captured.err
+    assert "No supported accelerator was detected" in captured.err
+    assert "unexpected bug, not a DiscoveryError" in captured.err
     assert "Traceback" not in captured.err
 
 

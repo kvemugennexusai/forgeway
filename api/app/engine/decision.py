@@ -58,6 +58,7 @@ from app.core.engine.scoring import score_candidate, size_replicas
 from app.core.schemas import LATENCY_METRIC_KEY, THROUGHPUT_METRIC_KEY, ComputeTarget, PerformanceEvidence
 from app.data.loader import load_compute_targets
 from app.engine.evidence_gateway import resolve_evidence
+from app.engine.qualification_check import evaluate_databank_qualification
 from app.models import (
     CandidateEvaluation,
     Evidence,
@@ -261,7 +262,12 @@ def run_decision(
 
     # Steps 3-6, per target.
     for target in targets:
-        checks = evaluate_feasibility(workload, target)
+        # The core hard-compatibility checklist, plus one additive check
+        # consulting the qualification databank (app.qualification.store)
+        # — kept outside app.core.engine.feasibility since that package is
+        # proven decoupled from any I/O source (test_core_isolation.py);
+        # see app.engine.qualification_check's module docstring.
+        checks = evaluate_feasibility(workload, target) + [evaluate_databank_qualification(workload, target)]
         evidence = resolve_evidence(
             workload.id, target.id, benchmark_runs=benchmark_runs, required_metrics=REQUIRED_METRICS
         )

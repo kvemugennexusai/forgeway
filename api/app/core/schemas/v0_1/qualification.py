@@ -81,6 +81,12 @@ class QualificationSubject(BaseModel):
     runtime: str
     runtime_version: Optional[str] = None
     backend: Optional[str] = None
+    #: Normally an exact model id, matching BenchmarkProfile.model (e.g.
+    #: "meta-llama/Llama-3.1-70B-Instruct"). "*" is a documented wildcard
+    #: meaning "any model" — used only by general, workload-class-level
+    #: facts (app.engine.qualification_check.ANY_MODEL, and any
+    #: hand-authored record meant to apply regardless of model), never by
+    #: a real measured/smoke-tested claim about one specific model.
     model: str
     precision: str
     deployment_config: dict = Field(default_factory=dict)

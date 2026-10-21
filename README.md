@@ -519,9 +519,9 @@ soft dimensions — vLLM patch version, driver version — differed, as expected
 independently-built vendor Docker images). Every piece — profile validation, the comparability
 policy, both vendors' runner classes — is also covered by unit/integration tests using mocked
 subprocess output; the decision-engine ranking behavior specifically is proven via synthetic
-evidence (`api/tests/test_decision_cross_vendor.py`), not by rerunning `forgeway analyze` on
-these two live files. It is accurate to say **"Forgeway has been live-validated running the same
-benchmark profile on NVIDIA and AMD hardware."** The model actually used for this proof was
+evidence (`api/tests/test_decision_cross_vendor.py`). For the subsequent captured-evidence
+placement replay and its limitations, see [saved-input analysis](#analyze-saved-targets-and-evidence).
+It is accurate to say **"Forgeway has been live-validated running the same benchmark profile on NVIDIA and AMD hardware."** The model actually used for this proof was
 `Qwen/Qwen2.5-1.5B-Instruct`, not the primary Llama 3.1 8B profile (gated, no HF credentials on
 either test machine) or even the first open-model substitute, Qwen2.5 7B (its bf16 weights alone
 didn't fit the AMD card's 16 GB VRAM) — see
@@ -574,6 +574,56 @@ the same way any other evidence is (`docs/decision-engine.md`) — but only if i
 `--workload-id` set to that workload's real id (see above); `forgeway bench`'s own default
 (`workload_id` = the `--model` string) never matches an existing demo workload, so a default run
 doesn't affect any existing demo workload's recommendation.
+
+### Analyze saved targets and evidence
+
+`forgeway analyze` accepts repeatable `--target-file` and `--evidence-file` options.
+Each target file is one `ComputeTarget` JSON object; each evidence file is one
+`PerformanceEvidence` or `CrossVendorEvidenceRecord` JSON object with an explicit
+supported `schema_version`: `forgeway/v0.1` for targets/plain evidence or
+`forgeway-cross-vendor/v0.1` for envelopes. Envelope evidence is extracted unchanged;
+supply its target separately. The workload remains an `AIWorkload` YAML file.
+
+From the repository root, after backend installation, this runnable example saves
+two public demo targets and their **synthetic fixture evidence** into a temporary
+directory, then analyzes them:
+
+```bash
+saved_inputs=$(mktemp -d)
+PYTHONPATH=api python3 - "$saved_inputs" <<'PY'
+import sys
+from pathlib import Path
+from app.data.loader import load_compute_targets
+from app.engine.evidence_gateway import fixture_evidence
+
+out = Path(sys.argv[1])
+for target in load_compute_targets():
+    if target.id in ("nvidia-h100-dc", "amd-mi300x"):
+        evidence = fixture_evidence("wl-llama70b-rt", target.id)
+        (out / f"{target.id}.json").write_text(target.model_dump_json(indent=2))
+        (out / f"{target.id}-evidence.json").write_text(evidence.model_dump_json(indent=2))
+PY
+forgeway analyze examples/workload.yaml --targets-only \
+  --target-file "$saved_inputs/nvidia-h100-dc.json" \
+  --target-file "$saved_inputs/amd-mi300x.json" \
+  --evidence-file "$saved_inputs/nvidia-h100-dc-evidence.json" \
+  --evidence-file "$saved_inputs/amd-mi300x-evidence.json" --json
+```
+
+`--targets-only` requires at least one target file and excludes fixture targets and
+hardware discovery. Without it, supplied targets are added to the existing defaults;
+`--skip-discovery` skips only discovery. Evidence selection still considers matching
+fixture and local benchmark evidence: `--targets-only` limits targets, not evidence
+sources. IDs must match the workload/targets and must not collide. Invalid versions,
+IDs, collisions or scoring metrics produce errors; capability/pricing gaps produce
+stderr warnings. Imports are read only and leave scoring and confidence gates unchanged.
+
+**Validation:** captured NVIDIA/AMD evidence was replayed through placement analysis
+with explicitly illustrative inputs. Recommendations were withheld because pricing
+confidence was unavailable. DGX memory remains unresolved; the separate hypothetical
+capacity scenario was not hardware validation. See the [saved-evidence replay
+results and prerequisites](docs/saved-evidence-replay.md) for details. This establishes
+no hardware winner, cost savings, or production readiness.
 
 ## Web: importing a real benchmark result
 
@@ -669,42 +719,6 @@ decides; nothing here calls a model to place a workload.
 See [`CONTRIBUTING.md`](CONTRIBUTING.md) for local setup, test commands, and how to add benchmark
 evidence, a discovery adapter, or a workload fixture. See [`ROADMAP.md`](ROADMAP.md) for what's
 next (AMD ROCm discovery is first).
-
-### Analyze saved targets and evidence
-
-`forgeway analyze` accepts repeatable `--target-file` and `--evidence-file`
-options. Each file contains one JSON object: a typed `ComputeTarget` for
-`--target-file`, or a typed `PerformanceEvidence` / `CrossVendorEvidenceRecord`
-for `--evidence-file`. Records must declare their supported `schema_version`.
-Envelope evidence is extracted unchanged; its embedded target is **not** added
-to the target catalog. Save that target as a separate ComputeTarget JSON file.
-
-```bash
-forgeway analyze workload.yaml --targets-only \
-  --target-file nvidia-target.json --target-file amd-target.json \
-  --evidence-file results/nvidia-run.json --evidence-file results/amd-run.json \
-  --json
-```
-
-`--targets-only` requires at least one target file and uses exactly those targets,
-without fixture targets or hardware discovery. Without it, supplied targets are
-added to the existing fixture/discovery defaults; `--skip-discovery` still skips
-only discovery. Target IDs must be unique, including against fixture/discovered
-IDs. Evidence must match the workload ID and an analyzed target ID. Repeated run
-IDs (or identical anonymous evidence) are rejected. An imported run that conflicts
-with a run ID in the local benchmark store is rejected; an identical stored run
-is accepted only if every stored record sharing that ID agrees. Imported scoring
-throughput must be finite and strictly positive; P99 latency must be finite and
-non-negative. Invalid values report the file and metric. Inputs are read only
-and are not saved to the benchmark store.
-Existing fixture evidence and local benchmark evidence selection remain active;
-`--targets-only` limits targets, not evidence sources.
-
-Missing capability metadata and zero-confidence pricing produce stderr warnings,
-including with `--json`. Warnings do not fill missing fields or change engine
-feasibility, scoring, or ranking. A zero placeholder price is not evidence of free
-hardware. See [saved NVIDIA/AMD replay prerequisites](docs/saved-evidence-replay.md)
-before interpreting placement output for the checked-in benchmark records.
 
 ## License
 

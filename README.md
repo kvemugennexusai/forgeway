@@ -670,6 +670,42 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md) for local setup, test commands, and how
 evidence, a discovery adapter, or a workload fixture. See [`ROADMAP.md`](ROADMAP.md) for what's
 next (AMD ROCm discovery is first).
 
+### Analyze saved targets and evidence
+
+`forgeway analyze` accepts repeatable `--target-file` and `--evidence-file`
+options. Each file contains one JSON object: a typed `ComputeTarget` for
+`--target-file`, or a typed `PerformanceEvidence` / `CrossVendorEvidenceRecord`
+for `--evidence-file`. Records must declare their supported `schema_version`.
+Envelope evidence is extracted unchanged; its embedded target is **not** added
+to the target catalog. Save that target as a separate ComputeTarget JSON file.
+
+```bash
+forgeway analyze workload.yaml --targets-only \
+  --target-file nvidia-target.json --target-file amd-target.json \
+  --evidence-file results/nvidia-run.json --evidence-file results/amd-run.json \
+  --json
+```
+
+`--targets-only` requires at least one target file and uses exactly those targets,
+without fixture targets or hardware discovery. Without it, supplied targets are
+added to the existing fixture/discovery defaults; `--skip-discovery` still skips
+only discovery. Target IDs must be unique, including against fixture/discovered
+IDs. Evidence must match the workload ID and an analyzed target ID. Repeated run
+IDs (or identical anonymous evidence) are rejected. An imported run that conflicts
+with a run ID in the local benchmark store is rejected; an identical stored run
+is accepted only if every stored record sharing that ID agrees. Imported scoring
+throughput must be finite and strictly positive; P99 latency must be finite and
+non-negative. Invalid values report the file and metric. Inputs are read only
+and are not saved to the benchmark store.
+Existing fixture evidence and local benchmark evidence selection remain active;
+`--targets-only` limits targets, not evidence sources.
+
+Missing capability metadata and zero-confidence pricing produce stderr warnings,
+including with `--json`. Warnings do not fill missing fields or change engine
+feasibility, scoring, or ranking. A zero placeholder price is not evidence of free
+hardware. See [saved NVIDIA/AMD replay prerequisites](docs/saved-evidence-replay.md)
+before interpreting placement output for the checked-in benchmark records.
+
 ## License
 
 Apache License 2.0 — see [`LICENSE`](LICENSE).

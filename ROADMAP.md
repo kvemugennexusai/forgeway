@@ -75,16 +75,21 @@ boundary.
   been live-validated running the same benchmark profile on NVIDIA and AMD
   hardware — not yet demonstrated: the 7B/Llama-8B profiles specifically
   succeeding on this AMD card (the opposite was shown for the 7B one), and
-  a fresh `forgeway analyze` run consuming these exact two saved records
-  (that behavior is proven via synthetic evidence, not live, so far).
+  a live placement validation. Replay of these exact saved records has now
+  completed with illustrative inputs and correctly withheld recommendations; see
+  the first Next item and `docs/saved-evidence-replay.md`.
 
 ## Next
 
-- **Run `forgeway analyze` against the live cross-vendor evidence pair**
-  captured in `results/nvidia-run.json` / `results/amd-run.json` (see
-  `docs/cross-vendor-validation.md`) — steps 10-15 of that checklist,
-  the one part not yet exercised on top of a real run (proven so far only
-  via `api/tests/test_decision_cross_vendor.py`'s synthetic evidence).
+- **Complete a meaningful placement recommendation for the captured cross-vendor
+  evidence pair.** Replay of `results/nvidia-run.json` / `results/amd-run.json`
+  has completed through the saved-input CLI using explicitly illustrative inputs
+  (see [`docs/saved-evidence-replay.md`](docs/saved-evidence-replay.md)).
+  Recommendations were correctly withheld because unavailable pricing failed the
+  unchanged confidence gate. DGX memory remains unresolved; a separate
+  hypothetical-capacity scenario exercised prediction/SLO checks, not hardware
+  validation. Verified memory, real requirements and credible comparable pricing
+  remain prerequisites for ranking and objective-weight checks in steps 10-15.
 - **Live-validate the 7B/Llama-8B cross-vendor profiles specifically** —
   the `qwen2.5-1.5b-cross-vendor` profile proved the pipeline; the larger
   profiles remain `IMPLEMENTED BUT NOT LIVE VERIFIED` (worse: the 7B one is

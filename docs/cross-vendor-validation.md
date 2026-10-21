@@ -41,6 +41,18 @@ unqualified comparability, or claiming this proves anything about the 7B
 or Llama 3.1 8B profiles specifically, which were not the ones that
 succeeded) would be overclaiming — see "Why the model changed twice."
 
+## Saved-evidence replay update
+
+The captured NVIDIA/AMD pair has now been replayed through `forgeway analyze`
+with explicitly illustrative requirements. Recommendations were withheld because
+unavailable pricing failed the unchanged confidence gate. DGX memory remains
+unresolved. A separate hypothetical-memory scenario exercised SLO checks and is
+not hardware validation. See `docs/saved-evidence-replay.md` for results and
+remaining prerequisites. Earlier historical descriptions below record the state
+at the original benchmark session; claims that saved-file replay has not run are
+superseded by this update. Ranking/weight-flip and live placement validation remain
+open. Private replay artifacts are kept outside Git.
+
 ## Prerequisites
 
 - One machine with an NVIDIA CUDA GPU, the NVIDIA driver, and `nvidia-smi`
@@ -189,18 +201,13 @@ succeeded) would be overclaiming — see "Why the model changed twice."
    actual mismatch, or explicitly record why it's unfixable for this
    hardware pairing.
 
-10. **Run `forgeway analyze` using both evidence records.** This requires a
-    real `AIWorkload` YAML (not one of the five demo fixtures, since this
-    profile's model doesn't match any of them) and both `ComputeTarget`
-    JSON files (from step 2, edited per the Prerequisites note above) as
-    inputs Forgeway can score against — this repo does not (yet) have a
-    CLI flag that loads two arbitrary `ComputeTarget` files at once, so
-    the direct path is to add both edited targets to a local fixture-like
-    list via the same fixture format `app/data/loader.py` already reads,
-    or use the web `/import` flow (`docs/importing-results.md`) with each
-    edited target JSON uploaded in turn, then run `/analyze` against a
-    workload with `id: wl-cross-vendor-8b`. Confirm both targets appear as
-    `FEASIBLE` or `RECOMMENDED` — never silently dropped.
+10. **Run `forgeway analyze` using both evidence records.** Use repeatable
+    `--target-file` and `--evidence-file` options with `--targets-only`, as
+    documented in `docs/saved-evidence-replay.md`. Use a workload ID matching
+    the saved evidence exactly; this pair uses `Qwen/Qwen2.5-1.5B-Instruct`.
+    Keep originals unchanged and annotate separate target files with verified
+    metadata. A hard rejection or confidence-based withholding is a valid result;
+    never fill unknown capacity or pricing merely to obtain a recommendation.
 
 11. **Change the SLO** (e.g. tighten `p99_latency_ms` in the workload) and
     confirm the set of feasible candidates changes accordingly — see

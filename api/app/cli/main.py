@@ -39,6 +39,7 @@ from app.benchmark.vllm_runner import (
     DEFAULT_WARMUP_ITERATIONS,
     run_vllm_bench_latency,
 )
+from app.cli.saved_inputs import load_saved_input, validate_evidence, target_warnings
 from app.cli.yaml_io import AnalyzeError, load_policy_yaml, load_workload_yaml
 from app.core.schemas import ComputeTarget, Workload
 from app.core.schemas.v0_1 import PerformanceEvidence, PlacementDecision
@@ -767,15 +768,32 @@ def cmd_analyze(args: argparse.Namespace) -> int:
         return 1
 
     # Step 2: fixture/reference data, and/or discovered local hardware.
-    targets = list(load_compute_targets())
+    targets = [] if args.targets_only else list(load_compute_targets())
+    saved_target_ids = set()
+    try:
+        if args.targets_only and not args.target_file:
+            raise AnalyzeError("--targets-only requires at least one --target-file")
+        for path in args.target_file:
+            target = load_saved_input(path, target=True)
+            if any(t.id == target.id for t in targets):
+                raise AnalyzeError(f"{path}: duplicate target ID '{target.id}' (saved or fixture target)")
+            targets.append(target)
+            saved_target_ids.add(target.id)
+        imported_evidence = [load_saved_input(p, target=False) for p in args.evidence_file]
+    except AnalyzeError as e:
+        print(f"forgeway analyze: {e}", file=sys.stderr)
+        return 1
     targets_by_id = {t.id: t for t in targets}
     discovery_note = None
-    if not args.skip_discovery:
+    if not args.skip_discovery and not args.targets_only:
         try:
             discovered = run_discovery()
         except DiscoveryError:
             discovery_note = "(No local hardware discovered — evaluated against the fixture catalog only.)"
         else:
+            if discovered.id in saved_target_ids:
+                print(f"forgeway analyze: discovered target ID '{discovered.id}' collides with a saved target; use --skip-discovery", file=sys.stderr)
+                return 1
             if discovered.id in targets_by_id:
                 discovery_note = (
                     f"(Local hardware discovered: {discovered.model} — already present in the "
@@ -785,6 +803,18 @@ def cmd_analyze(args: argparse.Namespace) -> int:
                 targets.append(discovered)
                 targets_by_id[discovered.id] = discovered
                 discovery_note = f"(Included locally discovered target: {discovered.model} [{discovered.id}].)"
+
+    try:
+        validate_evidence(imported_evidence, targets, workload.id)
+    except AnalyzeError as e:
+        print(f"forgeway analyze: {e}", file=sys.stderr)
+        return 1
+    if args.target_file:
+        for target in targets:
+            if target.id not in saved_target_ids:
+                continue
+            for warning in target_warnings(target):
+                print(f"forgeway analyze: warning: {warning}", file=sys.stderr)
 
     # Steps 3-5: the same core engine the web app calls — app.engine.decision
     # .run_decision() — gathers relevant PerformanceEvidence and returns a
@@ -796,6 +826,7 @@ def cmd_analyze(args: argparse.Namespace) -> int:
         scenario=ScenarioParams(type=ScenarioType.normal, label="Normal — baseline, no scenario applied"),
         effective_min_throughput=workload.slo.min_throughput_tokens_per_s,
         targets=targets,
+        imported_evidence=imported_evidence,
     )
     decision = PlacementDecision.from_candidates(workload, record.candidates)
 
@@ -1034,11 +1065,17 @@ def build_parser() -> argparse.ArgumentParser:
     analyze_parser.add_argument(
         "--skip-discovery",
         action="store_true",
-        help="Don't attempt local hardware discovery; evaluate against the fixture catalog only.",
+        help="Don't attempt local hardware discovery; retain fixture and supplied targets.",
     )
     analyze_parser.add_argument(
         "--json", action="store_true", help="Emit the full PlacementDecision JSON record instead of text."
     )
+    analyze_parser.add_argument("--target-file", action="append", default=[],
+                                help="Saved ComputeTarget JSON; repeat to add targets (IDs must be unique).")
+    analyze_parser.add_argument("--evidence-file", action="append", default=[],
+                                help="PerformanceEvidence or CrossVendorEvidenceRecord JSON; repeat to import runs.")
+    analyze_parser.add_argument("--targets-only", action="store_true",
+                                help="Analyze exactly --target-file targets; omit fixtures and discovery.")
     analyze_parser.set_defaults(func=cmd_analyze)
 
     return parser
